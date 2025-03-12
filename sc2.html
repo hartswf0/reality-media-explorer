@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SOUL CONNECTIONS: Somatic Cybernetic Teeter Totter</title>
+  <style>
+    /* Global Styles */
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #1a1a1a;
+      font-family: Arial, sans-serif;
+    }
+    /* Foreground – Three.js container */
+    #container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 2;
+    }
+    /* Background – Brick canvas */
+    canvas#brickCanvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 1;
+      display: block;
+    }
+    /* Control Panel */
+    .controls {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0,26,51,0.8);
+      padding: 15px;
+      border-radius: 15px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      backdrop-filter: blur(8px);
+      color: #fff;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .controls label { font-size: 14px; }
+    .controls input[type="range"] { width: 150px; }
+    button {
+      background: #ffcc00;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    button:hover { background: #ffdd33; }
+    /* Video feed for movement measurement (optional to show) */
+    #cameraFeed {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      width: 160px;
+      border: 2px solid #666;
+      z-index: 11;
+      /* Uncomment to hide video feed: */
+      /* display: none; */
+    }
+  </style>
+</head>
+<body>
+  <!-- Foreground: Three.js Particle System -->
+  <div id="container"></div>
+  <!-- Background: Brick Canvas -->
+  <canvas id="brickCanvas"></canvas>
+  <!-- Control Panel -->
+  <div class="controls">
+    <button id="startAudio">Start Audio</button>
+    <label>Flow: <input type="range" id="flowSlider" min="0.5" max="3" step="0.1" value="1"></label>
+    <label>Color: <input type="range" id="colorSlider" min="0" max="1" step="0.01" value="0.5"></label>
+  </div>
+  <!-- Video element (used for movement detection) -->
+  <video id="cameraFeed" autoplay muted></video>
+  
+  <!-- External Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+  
+  <!-- FOREGROUND: Billboarded Brick Particle System (Sound-Driven) -->
+  <script>
+    /*****************************************************
+     * Foreground – Particle System (Billboarded Bricks)
+     *
+     * The brick particle is our fundamental unit.
+     * We have a fixed pool of particles (max 1000).
+     * The sound (singing) signal determines how many
+     * are active in the 3D scene.
+     *
+     * In silence, few particles are active;
+     * as volume increases, more bricks are allocated to
+     * the foreground.
+     *****************************************************/
+  
+    let scene, camera, renderer;
+    const container = document.getElementById('container');
+    const flowSlider = document.getElementById('flowSlider');
+    const colorSlider = document.getElementById('colorSlider');
+    const startAudioButton = document.getElementById('startAudio');
+  
+    let flow = parseFloat(flowSlider.value);
+    let colorTone = parseFloat(colorSlider.value);
+    flowSlider.addEventListener('input', () => { flow = parseFloat(flowSlider.value); });
+    colorSlider.addEventListener('input', () => { colorTone = parseFloat(colorSlider.value); });
+  
+    // Audio variables
+    let audioContext, audioAnalyser, audioData;
+    let audioEnabled = false;
+  
+    // Simplex noise and clock for subtle motion variation
+    const simplex = new SimplexNoise();
+    const clock = new THREE.Clock();
+  
+    // Particle system parameters
+    const MAX_PARTICLES = 1000; // total pool of brick particles
+    const MIN_ACTIVE = 100;     // minimum active particles in silence
+    let positions, velocities;
+    let particles, particleMaterial;
+  
+    // Create a custom brick texture (offscreen canvas)
+    function createBrickTexture() {
+      const sizeX = 64, sizeY = 32;
+      const canvas = document.createElement('canvas');
+      canvas.width = sizeX;
+      canvas.height = sizeY;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = "#b35a3c"; // base terracotta color
+      ctx.fillRect(0, 0, sizeX, sizeY);
+      ctx.strokeStyle = "rgba(0,0,0,0.2)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, sizeY/2);
+      ctx.lineTo(sizeX, sizeY/2);
+      ctx.moveTo(sizeX/2, 0);
+      ctx.lineTo(sizeX/2, sizeY);
+      ctx.stroke();
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.needsUpdate = true;
+      return texture;
+    }
+  
+    // Initialize Three.js scene
+    function initScene() {
+      scene = new THREE.Scene();
+      // Fog color harmonized to terracotta hues
+      scene.fog = new THREE.FogExp2(
+        new THREE.Color().lerpColors(new THREE.Color(0xb35a3c), new THREE.Color(0xff8c69), colorTone),
+        0.015
+      );
+  
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 300);
+      camera.position.set(0, 0, 50);
+  
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      // Transparent so background canvas shows through
+      renderer.setClearColor(0x000000, 0);
+      container.appendChild(renderer.domElement);
+  
+      // Create the particle system (Points-based)
+      const geometry = new THREE.BufferGeometry();
+      positions = new Float32Array(MAX_PARTICLES * 3);
+      velocities = new Float32Array(MAX_PARTICLES * 3);
+      for (let i = 0; i < MAX_PARTICLES; i++) {
+        positions[i*3] = Math.random() * 100 - 50;
+        positions[i*3+1] = Math.random() * 100 - 50;
+        positions[i*3+2] = Math.random() * 100 - 50;
+        velocities[i*3] = (Math.random() - 0.5) * 0.2;
+        velocities[i*3+1] = (Math.random() - 0.5) * 0.2;
+        velocities[i*3+2] = (Math.random() - 0.5) * 0.2;
+      }
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  
+      particleMaterial = new THREE.PointsMaterial({
+        size: 8,
+        map: createBrickTexture(),
+        transparent: true,
+        opacity: 0.8,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        color: new THREE.Color().lerpColors(new THREE.Color(0xb35a3c), new THREE.Color(0xff8c69), colorTone)
+      });
+  
+      particles = new THREE.Points(geometry, particleMaterial);
+      scene.add(particles);
+    }
+  
+    window.addEventListener('resize', onWindowResize);
+    function onWindowResize() {
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+  
+    // --- Audio Initialization ---
+    function initAudio() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioAnalyser = audioContext.createAnalyser();
+        audioAnalyser.fftSize = 256;
+        audioData = new Uint8Array(audioAnalyser.frequencyBinCount);
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            const source = audioContext.createMediaStreamSource(stream);
+            source.connect(audioAnalyser);
+            audioEnabled = true;
+            startAudioButton.textContent = "Audio On";
+          })
+          .catch(err => {
+            console.error("Audio error:", err);
+            alert("Microphone access denied. Audio features disabled.");
+          });
+      }
+    }
+    startAudioButton.addEventListener('click', initAudio);
+  
+    // --- Audio Utility Functions ---
+    function updateAudioData() {
+      if (audioEnabled && audioAnalyser) {
+        audioAnalyser.getByteFrequencyData(audioData);
+      }
+    }
+    function getAudioLevel(frequency) {
+      if (!audioEnabled || !audioData) return 0;
+      const binIndex = Math.floor((frequency / 22050) * audioData.length);
+      return audioData[Math.min(Math.max(binIndex, 0), audioData.length - 1)] / 255;
+    }
+  
+    /*****************************************************
+     * NEGOTIATION – Finite Brick Particles
+     *
+     * We compute two signals:
+     *   soundFactor = getAudioLevel(500) (0–1) from your singing.
+     *   movementFactor = from camera differences (0–1) representing dance.
+     *
+     * Total active particles = MIN_ACTIVE + (MAX_PARTICLES - MIN_ACTIVE) * avg,
+     *   where avg = (soundFactor + movementFactor) / 2.
+     * Then allocate:
+     *   fgCount = floor(totalActive * (soundFactor / (soundFactor + movementFactor + ε)))
+     *   bgAllocation = remaining (reflected in background layer count).
+     *****************************************************/
+    const MIN_ACTIVE = 100;
+  
+    // --- Foreground Animation Loop (Sound-Driven) ---
+    function animateThree() {
+      requestAnimationFrame(animateThree);
+      const delta = clock.getDelta();
+      updateAudioData();
+      const soundFactor = getAudioLevel(500);
+      // movementFactor is computed in the background loop and stored globally as window.movementLevel
+      const movementFactor = window.movementLevel || 0;
+  
+      const avg = (soundFactor + movementFactor) / 2;
+      const totalActive = MIN_ACTIVE + (MAX_PARTICLES - MIN_ACTIVE) * avg;
+      const fgRatio = soundFactor / (soundFactor + movementFactor + 0.001);
+      const fgCount = Math.floor(totalActive * fgRatio);
+      // Set the foreground particle system to render only fgCount particles
+      particles.geometry.setDrawRange(0, fgCount);
+  
+      // Audio-reactive camera motion
+      if (audioEnabled) {
+        camera.position.x += Math.sin(clock.getElapsedTime() * 2) * soundFactor * 2;
+        camera.position.y += Math.cos(clock.getElapsedTime() * 2) * soundFactor * 2;
+      }
+      camera.translateZ(-0.05 * flow);
+      camera.lookAt(scene.position);
+  
+      // Update particle positions with a speed scaled by soundFactor (foreground dynamics)
+      const posAttr = particles.geometry.attributes.position;
+      for (let i = 0; i < MAX_PARTICLES; i++) {
+        let ix = i * 3, iy = i * 3 + 1, iz = i * 3 + 2;
+        positions[ix] += velocities[ix] * delta * flow * soundFactor;
+        positions[iy] += velocities[iy] * delta * flow * soundFactor;
+        positions[iz] += velocities[iz] * delta * flow * soundFactor;
+        // Bounce within cube [-50,50]
+        if (Math.abs(positions[ix]) > 50) velocities[ix] *= -1;
+        if (Math.abs(positions[iy]) > 50) velocities[iy] *= -1;
+        if (Math.abs(positions[iz]) > 50) velocities[iz] *= -1;
+        // Add subtle noise
+        velocities[ix] += simplex.noise3D(positions[ix], positions[iy], clock.getElapsedTime()) * 0.001;
+        velocities[iy] += simplex.noise3D(positions[iy], positions[iz], clock.getElapsedTime()) * 0.001;
+        velocities[iz] += simplex.noise3D(positions[iz], positions[ix], clock.getElapsedTime()) * 0.001;
+      }
+      posAttr.needsUpdate = true;
+  
+      // Harmonize particle color and scene fog to terracotta hues
+      particleMaterial.color.lerp(
+        new THREE.Color().lerpColors(new THREE.Color(0xb35a3c), new THREE.Color(0xff8c69), colorTone),
+        0.05
+      );
+      scene.fog.color.lerp(
+        new THREE.Color().lerpColors(new THREE.Color(0xb35a3c), new THREE.Color(0xff8c69), colorTone),
+        0.05
+      );
+  
+      renderer.render(scene, camera);
+    }
+  
+    initScene();
+    animateThree();
+  </script>
+  
+  <!-- BACKGROUND: Temporal Brick Canvas (Movement-Driven) -->
+  <script>
+    /*****************************************************
+     * Background – Temporal Brick Effect (Dance-Driven)
+     *
+     * The full-screen canvas uses the camera feed to measure
+     * movement (dancer's motion). We compute an average movement
+     * level (window.movementLevel) and then allocate the remaining
+     * brick particles to the background as a function of movement.
+     * More movement means more background layers, fewer foreground
+     * particles; less movement means fewer layers.
+     *****************************************************/
+    const brickCanvas = document.getElementById('brickCanvas');
+    const ctx = brickCanvas.getContext('2d');
+    const video = document.getElementById('cameraFeed');
+  
+    // Brick effect configuration
+    const BRICK_WIDTH = 24;
+    const BRICK_HEIGHT = 12;
+    const MORTAR = 2;
+    const TIME_LAYERS = 30; // maximum layers available
+    const Z_STEP = 4;
+    const DECAY_RATE = 0.96;
+  
+    function resizeCanvas() {
+      brickCanvas.width = window.innerWidth;
+      brickCanvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+  
+    const GRID_X = Math.ceil(brickCanvas.width / BRICK_WIDTH);
+    const GRID_Y = Math.ceil(brickCanvas.height / BRICK_HEIGHT);
+    const TIME_GRID = Array.from({ length: GRID_X }, () =>
+      Array.from({ length: GRID_Y }, () => Array(TIME_LAYERS).fill(0))
+    );
+  
+    // Global movement level (0–1) updated from video differences
+    window.movementLevel = 0;
+  
+    // Access the camera feed
+    let lastFrame;
+    navigator.mediaDevices.getUserMedia({ video: true })
+      .then(stream => { video.srcObject = stream; })
+      .catch(err => { console.error("Camera error:", err); });
+  
+    function processCamera() {
+      if (!video.videoWidth) return;
+      const tempCanvas = document.createElement('canvas');
+      tempCanvas.width = video.videoWidth;
+      tempCanvas.height = video.videoHeight;
+      const tctx = tempCanvas.getContext('2d');
+      tctx.drawImage(video, 0, 0);
+      const currentFrame = tctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+      if (!lastFrame) lastFrame = currentFrame.data;
+  
+      let noiseSum = 0, count = 0;
+      for (let x = 0; x < GRID_X; x++) {
+        for (let y = 0; y < GRID_Y; y++) {
+          const camX = Math.floor((x / GRID_X) * video.videoWidth);
+          const camY = Math.floor((y / GRID_Y) * video.videoHeight);
+          const i = (camY * video.videoWidth + camX) * 4;
+          const diff = Math.abs(currentFrame.data[i] - lastFrame[i]) +
+                       Math.abs(currentFrame.data[i+1] - lastFrame[i+1]) +
+                       Math.abs(currentFrame.data[i+2] - lastFrame[i+2]);
+          TIME_GRID[x][y].pop();
+          TIME_GRID[x][y].unshift(Math.min(1, diff / 100));
+          noiseSum += TIME_GRID[x][y][0];
+          count++;
+        }
+      }
+      lastFrame = new Uint8ClampedArray(currentFrame.data);
+      // Update global movement level
+      window.movementLevel = noiseSum / count;
+    }
+  
+    // Draw a brick at grid cell (x,y) for layer z
+    function drawBrick(x, y, z) {
+      const depth = z * Z_STEP;
+      const brickX = x * BRICK_WIDTH;
+      const brickY = y * BRICK_HEIGHT - depth;
+      const baseLightness = 45;
+      const lightness = baseLightness - (z / TIME_LAYERS) * 10;
+      ctx.fillStyle = `hsl(30, 70%, ${lightness}%)`;
+      ctx.fillRect(
+        brickX + depth * 0.3,
+        brickY + depth * 0.3,
+        BRICK_WIDTH - MORTAR,
+        BRICK_HEIGHT - MORTAR
+      );
+      ctx.strokeStyle = `hsl(30, 20%, 30%)`;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(
+        brickX + depth * 0.3 + 0.5,
+        brickY + depth * 0.3 + 0.5,
+        BRICK_WIDTH - MORTAR - 1,
+        BRICK_HEIGHT - MORTAR - 1
+      );
+    }
+  
+    // Animation loop for background.
+    // We compute dynamicLayerCount based on the movement signal.
+    function animateBricks() {
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 0, brickCanvas.width, brickCanvas.height);
+      processCamera();
+  
+      // Use movementLevel (from 0 to 1) to determine background detail.
+      // More movement = more layers; less movement = fewer layers.
+      const dynamicLayerCount = Math.floor(TIME_LAYERS * (window.movementLevel));
+  
+      for (let z = 0; z < dynamicLayerCount; z++) {
+        for (let x = 0; x < GRID_X; x++) {
+          for (let y = 0; y < GRID_Y; y++) {
+            const intensity = TIME_GRID[x][y][z] * Math.pow(DECAY_RATE, z);
+            if (intensity > 0.1) {
+              ctx.globalAlpha = intensity;
+              drawBrick(x, y, z);
+            }
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+      requestAnimationFrame(animateBricks);
+    }
+    animateBricks();
+  
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+    });
+  </script>
+</body>
+</html>

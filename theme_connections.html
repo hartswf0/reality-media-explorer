@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reality Media - Theme Connections</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 30px;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+        }
+        h1, h2 {
+            text-align: center;
+        }
+        .description {
+            max-width: 800px;
+            margin: 20px auto;
+            text-align: center;
+            line-height: 1.6;
+        }
+        #graph {
+            width: 800px;
+            height: 700px;
+            margin: 0 auto;
+            background-color: #1e1e1e;
+            border-radius: 10px;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            gap: 20px;
+        }
+        .control-btn {
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            background-color: #333;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .control-btn:hover {
+            background-color: #555;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin: 20px auto;
+            max-width: 800px;
+            gap: 10px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 10px;
+        }
+        .legend-color {
+            width: 15px;
+            height: 15px;
+            margin-right: 8px;
+            border-radius: 3px;
+        }
+        .nav-buttons {
+            display: flex;
+            justify-content: center;
+            margin: 30px 0;
+        }
+        .nav-btn {
+            padding: 12px 25px;
+            margin: 0 10px;
+            border: none;
+            border-radius: 5px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            color: white;
+        }
+    </style>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+    <h1>Reality Media Theme Connections</h1>
+    <p class="description">
+        Explore the interconnections between the five thematic realms of presence and aura. 
+        This visualization shows how concepts flow and relate across different dimensions of the Reality Media experience.
+    </p>
+    
+    <div class="controls">
+        <button class="control-btn" id="force-btn">Force Simulation</button>
+        <button class="control-btn" id="radial-btn">Radial Layout</button>
+        <button class="control-btn" id="cluster-btn">Clustered View</button>
+    </div>
+    
+    <div class="legend">
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #6B238E;"></div>
+            <span>Mystical</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #00FF00;"></div>
+            <span>Technological</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #228B22;"></div>
+            <span>Natural</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #FF69B4;"></div>
+            <span>Emotional</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #808080;"></div>
+            <span>Abstract</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color" style="background-color: #FFD700;"></div>
+            <span>Core Concept</span>
+        </div>
+    </div>
+    
+    <div id="graph"></div>
+    
+    <div class="nav-buttons">
+        <a href="index_hub.html" class="nav-btn" style="background-color: #333;">Return to Hub</a>
+        <a href="spatial_structure.html" class="nav-btn" style="background-color: #444;">View Spatial Structure</a>
+    </div>
+    
+    <script>
+        // Theme data
+        const themeData = {
+            nodes: [
+                // Core concepts
+                { id: "presence", group: "core", label: "Presence", size: 15 },
+                { id: "aura", group: "core", label: "Aura", size: 15 },
+                { id: "reality", group: "core", label: "Reality", size: 15 },
+                { id: "media", group: "core", label: "Media", size: 15 },
+                
+                // Mystical realm
+                { id: "immersion", group: "mystical", label: "Immersion", size: 10 },
+                { id: "transport", group: "mystical", label: "Transport", size: 10 },
+                { id: "uncanny", group: "mystical", label: "Uncanny", size: 10 },
+                { id: "ritual", group: "mystical", label: "Ritual", size: 10 },
+                
+                // Technological realm
+                { id: "interface", group: "technological", label: "Interface", size: 10 },
+                { id: "platform", group: "technological", label: "Platform", size: 10 },
+                { id: "network", group: "technological", label: "Network", size: 10 },
+                { id: "digital", group: "technological", label: "Digital", size: 10 },
+                
+                // Natural realm
+                { id: "embodiment", group: "natural", label: "Embodiment", size: 10 },
+                { id: "organic", group: "natural", label: "Organic", size: 10 },
+                { id: "sensory", group: "natural", label: "Sensory", size: 10 },
+                { id: "physical", group: "natural", label: "Physical", size: 10 },
+                
+                // Emotional realm
+                { id: "affect", group: "emotional", label: "Affect", size: 10 },
+                { id: "resonance", group: "emotional", label: "Resonance", size: 10 },
+                { id: "empathy", group: "emotional", label: "Empathy", size: 10 },
+                { id: "connection", group: "emotional", label: "Connection", size: 10 },
+                
+                // Abstract realm
+                { id: "timeline", group: "abstract", label: "Timeline", size: 10 },
+                { id: "theory", group: "abstract", label: "Theory", size: 10 },
+                { id: "evolution", group: "abstract", label: "Evolution", size: 10 },
+                { id: "knowledge", group: "abstract", label: "Knowledge", size: 10 }
+            ],
+            links: [
+                // Core concept connections
+                { source: "presence", target: "aura", value: 5 },
+                { source: "presence", target: "reality", value: 5 },
+                { source: "aura", target: "media", value: 5 },
+                { source: "reality", target: "media", value: 5 },
+                
+                // Mystical connections
+                { source: "presence", target: "immersion", value: 3 },
+                { source: "aura", target: "uncanny", value: 3 },
+                { source: "immersion", target: "transport", value: 2 },
+                { source: "uncanny", target: "ritual", value: 2 },
+                { source: "transport", target: "ritual", value: 2 },
+                
+                // Technological connections
+                { source: "presence", target: "interface", value: 3 },
+                { source: "media", target: "platform", value: 3 },
+                { source: "platform", target: "network", value: 2 },
+                { source: "interface", target: "digital", value: 2 },
+                { source: "network", target: "digital", value: 2 },
+                
+                // Natural connections
+                { source: "presence", target: "embodiment", value: 3 },
+                { source: "reality", target: "physical", value: 3 },
+                { source: "embodiment", target: "sensory", value: 2 },
+                { source: "organic", target: "physical", value: 2 },
+                { source: "sensory", target: "organic", value: 2 },
+                
+                // Emotional connections
+                { source: "aura", target: "affect", value: 3 },
+                { source: "presence", target: "connection", value: 3 },
+                { source: "affect", target: "resonance", value: 2 },
+                { source: "empathy", target: "connection", value: 2 },
+                { source: "resonance", target: "empathy", value: 2 },
+                
+                // Abstract connections
+                { source: "media", target: "timeline", value: 3 },
+                { source: "reality", target: "theory", value: 3 },
+                { source: "timeline", target: "evolution", value: 2 },
+                { source: "theory", target: "knowledge", value: 2 },
+                { source: "evolution", target: "knowledge", value: 2 },
+                
+                // Cross-realm connections
+                { source: "immersion", target: "embodiment", value: 1 },
+                { source: "transport", target: "interface", value: 1 },
+                { source: "uncanny", target: "empathy", value: 1 },
+                { source: "ritual", target: "affect", value: 1 },
+                { source: "digital", target: "evolution", value: 1 },
+                { source: "network", target: "knowledge", value: 1 },
+                { source: "sensory", target: "resonance", value: 1 },
+                { source: "physical", target: "platform", value: 1 },
+                { source: "connection", target: "theory", value: 1 },
+                { source: "affect", target: "organic", value: 1 }
+            ]
+        };
+        
+        // Set up the SVG
+        const width = 800;
+        const height = 700;
+        
+        const svg = d3.select("#graph")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+            
+        // Define group colors
+        const colors = {
+            core: "#FFD700",
+            mystical: "#6B238E",
+            technological: "#00FF00",
+            natural: "#228B22", 
+            emotional: "#FF69B4",
+            abstract: "#808080"
+        };
+        
+        // Create the simulation
+        let simulation = d3.forceSimulation()
+            .force("link", d3.forceLink().id(d => d.id).distance(d => 100 / d.value))
+            .force("charge", d3.forceManyBody().strength(-100))
+            .force("center", d3.forceCenter(width / 2, height / 2));
+            
+        // Create the links
+        const link = svg.append("g")
+            .attr("class", "links")
+            .selectAll("line")
+            .data(themeData.links)
+            .enter()
+            .append("line")
+            .attr("stroke-width", d => Math.sqrt(d.value))
+            .attr("stroke", "#999")
+            .attr("stroke-opacity", 0.6);
+            
+        // Create the nodes
+        const node = svg.append("g")
+            .attr("class", "nodes")
+            .selectAll("g")
+            .data(themeData.nodes)
+            .enter()
+            .append("g");
+            
+        // Add circles to nodes
+        node.append("circle")
+            .attr("r", d => d.size)
+            .attr("fill", d => colors[d.group])
+            .call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended));
+                
+        // Add labels to nodes
+        node.append("text")
+            .text(d => d.label)
+            .attr("x", 0)
+            .attr("y", d => d.size + 10)
+            .attr("text-anchor", "middle")
+            .attr("fill", "#ffffff")
+            .style("font-size", "10px");
+            
+        // Add title for tooltip
+        node.append("title")
+            .text(d => `${d.label} (${d.group})`);
+            
+        // Start the simulation
+        simulation
+            .nodes(themeData.nodes)
+            .on("tick", ticked);
+            
+        simulation.force("link")
+            .links(themeData.links);
+            
+        // Tick function to update positions
+        function ticked() {
+            link
+                .attr("x1", d => d.source.x)
+                .attr("y1", d => d.source.y)
+                .attr("x2", d => d.target.x)
+                .attr("y2", d => d.target.y);
+                
+            node
+                .attr("transform", d => `translate(${d.x},${d.y})`);
+        }
+        
+        // Drag functions
+        function dragstarted(event, d) {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+        
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+        
+        function dragended(event, d) {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+        }
+        
+        // Layout controls
+        document.getElementById("force-btn").addEventListener("click", () => {
+            // Reset all fixed positions
+            themeData.nodes.forEach(node => {
+                node.fx = null;
+                node.fy = null;
+            });
+            
+            // Reset forces
+            simulation
+                .force("link", d3.forceLink().id(d => d.id).distance(d => 100 / d.value))
+                .force("charge", d3.forceManyBody().strength(-100))
+                .force("center", d3.forceCenter(width / 2, height / 2));
+                
+            simulation.alpha(1).restart();
+        });
+        
+        document.getElementById("radial-btn").addEventListener("click", () => {
+            // Position nodes in a radial layout by group
+            const groups = [...new Set(themeData.nodes.map(d => d.group))];
+            const angleStep = (2 * Math.PI) / groups.length;
+            
+            const groupPositions = {};
+            groups.forEach((group, i) => {
+                const angle = i * angleStep;
+                const radius = 200;
+                groupPositions[group] = {
+                    x: width/2 + radius * Math.cos(angle),
+                    y: height/2 + radius * Math.sin(angle)
+                };
+            });
+            
+            // Position core in center
+            groupPositions.core = { x: width/2, y: height/2 };
+            
+            themeData.nodes.forEach(node => {
+                const groupPos = groupPositions[node.group];
+                const nodeAngle = Math.random() * 2 * Math.PI;
+                const nodeRadius = node.group === "core" ? 30 : 80;
+                
+                node.fx = groupPos.x + nodeRadius * Math.cos(nodeAngle);
+                node.fy = groupPos.y + nodeRadius * Math.sin(nodeAngle);
+            });
+            
+            simulation.alpha(1).restart();
+        });
+        
+        document.getElementById("cluster-btn").addEventListener("click", () => {
+            // Create force clusters by group
+            simulation
+                .force("link", d3.forceLink().id(d => d.id).distance(d => 100 / d.value))
+                .force("charge", d3.forceManyBody().strength(-50))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .force("x", d3.forceX().x(d => {
+                    if (d.group === "core") return width / 2;
+                    if (d.group === "mystical") return width / 4;
+                    if (d.group === "technological") return width * 3 / 4;
+                    if (d.group === "natural") return width / 3;
+                    if (d.group === "emotional") return width * 2 / 3;
+                    if (d.group === "abstract") return width / 2;
+                }).strength(0.1))
+                .force("y", d3.forceY().y(d => {
+                    if (d.group === "core") return height / 2;
+                    if (d.group === "mystical") return height / 4;
+                    if (d.group === "technological") return height / 4;
+                    if (d.group === "natural") return height * 3 / 4;
+                    if (d.group === "emotional") return height * 3 / 4;
+                    if (d.group === "abstract") return height / 2;
+                }).strength(0.1));
+                
+            // Reset fixed positions
+            themeData.nodes.forEach(node => {
+                node.fx = null;
+                node.fy = null;
+            });
+            
+            simulation.alpha(1).restart();
+        });
+    </script>
+</body>
+</html>

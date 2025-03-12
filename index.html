@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reality Media Memory Palace</title>
+    <style>
+        body { margin: 0; }
+        canvas { display: block; }
+        #loading {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            color: white;
+        }
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading">Entering Memory Palace...</div>
+    <div id="info">Navigate using mouse/trackpad. Click cubes to explore different experiences.</div>
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/controls/OrbitControls.js';
+        import { TextGeometry } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/geometries/TextGeometry.js';
+        import { FontLoader } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/loaders/FontLoader.js';
+
+        let camera, scene, renderer, controls;
+        let rotunda, currentRoom;
+        let raycaster, mouse;
+        let font;
+        
+        // Entity definitions with corresponding HTML files
+        const entities = {
+            // Central hub
+            rotunda: { 
+                color: 0x34495e, 
+                position: new THREE.Vector3(0, 0, 0),
+                link: './index_hub.html',
+                label: 'Hub'
+            },
+            // Main themes
+            mystical: { 
+                color: 0x9b59b6, 
+                position: new THREE.Vector3(-20, 10, 0),
+                link: './mystical.html',
+                label: 'Mystical'
+            },
+            technological: { 
+                color: 0x3498db, 
+                position: new THREE.Vector3(20, 0, 0),
+                link: './technological.html',
+                label: 'Technological'
+            },
+            natural: { 
+                color: 0x2ecc71, 
+                position: new THREE.Vector3(0, 10, 0),
+                link: './natural.html',
+                label: 'Natural'
+            },
+            abstract: { 
+                color: 0xe74c3c, 
+                position: new THREE.Vector3(-20, 0, 0),
+                link: './abstract.html',
+                label: 'Abstract'
+            },
+            // Interactive experiences
+            dynamic: { 
+                color: 0xf1c40f, 
+                position: new THREE.Vector3(0, 0, 20),
+                link: './dynamic-camera.html',
+                label: 'Dynamic Camera'
+            },
+            video: { 
+                color: 0x1abc9c, 
+                position: new THREE.Vector3(0, 0, -20),
+                link: './video_capture.html',
+                label: 'Video Capture'
+            },
+            // Learning experiences
+            qlearning: { 
+                color: 0x95a5a6, 
+                position: new THREE.Vector3(20, 10, 0),
+                link: './q-learning-episode-viewer.html',
+                label: 'Q-Learning'
+            },
+            // Scenes
+            sc2: { 
+                color: 0xe67e22, 
+                position: new THREE.Vector3(0, -10, 0),
+                link: './sc2.html',
+                label: 'Scene 2'
+            },
+            sc3: { 
+                color: 0x16a085, 
+                position: new THREE.Vector3(15, -10, 15),
+                link: './sc3.html',
+                label: 'Scene 3'
+            },
+            sc4: { 
+                color: 0x2c3e50, 
+                position: new THREE.Vector3(-15, -10, -15),
+                link: './sc4.html',
+                label: 'Scene 4'
+            },
+            sc5: { 
+                color: 0x8e44ad, 
+                position: new THREE.Vector3(15, -10, -15),
+                link: './sc5.html',
+                label: 'Scene 5'
+            },
+            sc6: { 
+                color: 0xd35400, 
+                position: new THREE.Vector3(-15, -10, 15),
+                link: './sc6.html',
+                label: 'Scene 6'
+            },
+            sc7: { 
+                color: 0x27ae60, 
+                position: new THREE.Vector3(15, 10, 15),
+                link: './sc7-color.html',
+                label: 'Scene 7'
+            },
+            soul: { 
+                color: 0xc0392b, 
+                position: new THREE.Vector3(-15, 10, -15),
+                link: './soul-connect.html',
+                label: 'Soul Connect'
+            },
+            // Additional files
+            hyperbrick: { 
+                color: 0x7f8c8d, 
+                position: new THREE.Vector3(-15, 10, 15),
+                link: './hyperbrick-scene.html',
+                label: 'Hyperbrick'
+            },
+            hyperclay: { 
+                color: 0xf39c12, 
+                position: new THREE.Vector3(15, 10, -15),
+                link: './hyperclay.html',
+                label: 'Hyperclay'
+            },
+            spatial: { 
+                color: 0x2980b9, 
+                position: new THREE.Vector3(-20, -10, 0),
+                link: './spatial_structure.html',
+                label: 'Spatial'
+            },
+            template: { 
+                color: 0x1abc9c, 
+                position: new THREE.Vector3(20, -10, 0),
+                link: './template_scene.html',
+                label: 'Template'
+            },
+            theme: { 
+                color: 0xd35400, 
+                position: new THREE.Vector3(0, 20, 0),
+                link: './theme_connections.html',
+                label: 'Themes'
+            },
+            sound: { 
+                color: 0x3498db, 
+                position: new THREE.Vector3(0, -20, 0),
+                link: './index-hub-sound.html',
+                label: 'Sound Hub'
+            },
+            end: { 
+                color: 0xe74c3c, 
+                position: new THREE.Vector3(0, 0, -30),
+                link: './end.html',
+                label: 'End'
+            }
+        };
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 30, 50);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
+            directionalLight.position.set(5, 5, 5);
+            scene.add(directionalLight);
+
+            // Initialize raycaster
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // Load font for text labels
+            const fontLoader = new FontLoader();
+            fontLoader.load('https://cdn.skypack.dev/three@0.136.0/examples/fonts/helvetiker_regular.typeface.json', function(loadedFont) {
+                font = loadedFont;
+                
+                // Create all spaces after font is loaded
+                createCentralRotunda();
+                createEntitySpaces();
+                createConnections();
+            });
+
+            // Event listeners
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('click', onMouseClick, false);
+            window.addEventListener('mousemove', onMouseMove, false);
+
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function createCentralRotunda() {
+            const geometry = new THREE.CylinderGeometry(10, 10, 20, 32);
+            const material = new THREE.MeshPhongMaterial({
+                color: entities.rotunda.color,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            rotunda = new THREE.Mesh(geometry, material);
+            rotunda.userData.name = 'rotunda';
+            rotunda.userData.isEntity = true;
+            rotunda.userData.link = entities.rotunda.link;
+            scene.add(rotunda);
+
+            // Add glow effect
+            const glowGeometry = new THREE.CylinderGeometry(10.2, 10.2, 20.2, 32);
+            const glowMaterial = new THREE.MeshPhongMaterial({
+                color: 0x3498db,
+                transparent: true,
+                opacity: 0.3,
+                side: THREE.DoubleSide
+            });
+            const glow = new THREE.Mesh(glowGeometry, glowMaterial);
+            scene.add(glow);
+            
+            // Add text label
+            createTextLabel(entities.rotunda.position.clone().add(new THREE.Vector3(0, 15, 0)), entities.rotunda.label);
+        }
+
+        function createEntitySpaces() {
+            for (const [name, data] of Object.entries(entities)) {
+                if (name === 'rotunda') continue;
+
+                const room = createRoom(data.color, data.position);
+                room.userData.name = name;
+                room.userData.isEntity = true;
+                room.userData.link = data.link;
+                scene.add(room);
+
+                // Add floating text labels
+                createTextLabel(data.position.clone().add(new THREE.Vector3(0, 5, 0)), data.label);
+                
+                // Add particles
+                createParticles(data.position, data.color);
+            }
+        }
+
+        function createRoom(color, position) {
+            const geometry = new THREE.BoxGeometry(8, 8, 8);
+            const material = new THREE.MeshPhongMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.6,
+                side: THREE.DoubleSide
+            });
+            const room = new THREE.Mesh(geometry, material);
+            room.position.copy(position);
+            return room;
+        }
+
+        function createConnections() {
+            // Create visual connections between related entities
+            const connections = [
+                ['rotunda', 'mystical'],
+                ['rotunda', 'technological'],
+                ['rotunda', 'natural'],
+                ['rotunda', 'abstract'],
+                ['rotunda', 'dynamic'],
+                ['rotunda', 'video'],
+                ['mystical', 'soul'],
+                ['technological', 'qlearning'],
+                ['natural', 'spatial'],
+                ['abstract', 'theme']
+            ];
+
+            connections.forEach(([from, to]) => {
+                const start = entities[from].position;
+                const end = entities[to].position;
+                
+                const points = [];
+                points.push(start);
+                points.push(end);
+
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const material = new THREE.LineBasicMaterial({ 
+                    color: 0xffffff,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                const line = new THREE.Line(geometry, material);
+                scene.add(line);
+            });
+        }
+
+        function createTextLabel(position, text) {
+            if (!font) return; // Wait for font to load
+            
+            const textGeometry = new TextGeometry(text, {
+                font: font,
+                size: 1,
+                height: 0.1
+            });
+            
+            textGeometry.computeBoundingBox();
+            const centerOffset = -0.5 * (textGeometry.boundingBox.max.x - textGeometry.boundingBox.min.x);
+            
+            const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const textMesh = new THREE.Mesh(textGeometry, material);
+            textMesh.position.copy(position);
+            textMesh.position.x += centerOffset;
+            scene.add(textMesh);
+        }
+
+        function createParticles(position, color) {
+            // Create floating particle system around each room
+            const particleCount = 20;
+            const particles = new THREE.BufferGeometry();
+            const positions = [];
+
+            for (let i = 0; i < particleCount; i++) {
+                const x = position.x + (Math.random() - 0.5) * 10;
+                const y = position.y + (Math.random() - 0.5) * 10;
+                const z = position.z + (Math.random() - 0.5) * 10;
+                positions.push(x, y, z);
+            }
+
+            particles.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            const particleMaterial = new THREE.PointsMaterial({
+                color: color,
+                size: 0.1,
+                transparent: true,
+                opacity: 0.6
+            });
+
+            const particleSystem = new THREE.Points(particles, particleMaterial);
+            scene.add(particleSystem);
+        }
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            // Highlight objects on hover
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children);
+            
+            // Reset all objects
+            scene.traverse((object) => {
+                if (object.userData.isEntity && object.material) {
+                    object.material.emissive = new THREE.Color(0x000000);
+                }
+            });
+            
+            // Highlight hovered object
+            for (let intersect of intersects) {
+                if (intersect.object.userData.isEntity && intersect.object.material) {
+                    intersect.object.material.emissive = new THREE.Color(0x333333);
+                    document.body.style.cursor = 'pointer';
+                    return;
+                }
+            }
+            
+            document.body.style.cursor = 'auto';
+        }
+
+        function onMouseClick(event) {
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(scene.children);
+
+            for (let intersect of intersects) {
+                if (intersect.object.userData.isEntity) {
+                    navigateToRoom(intersect.object);
+                    break;
+                }
+            }
+        }
+
+        function navigateToRoom(room) {
+            const link = room.userData.link;
+            if (link) {
+                // Show loading message
+                document.getElementById('loading').textContent = `Loading ${room.userData.name}...`;
+                document.getElementById('loading').style.display = 'block';
+                
+                // Navigate to the linked HTML file
+                window.location.href = link;
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Rotate rotunda slowly
+            if (rotunda) {
+                rotunda.rotation.y += 0.001;
+            }
+
+            // Animate particle systems
+            scene.children.forEach(child => {
+                if (child instanceof THREE.Points) {
+                    child.rotation.y += 0.001;
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

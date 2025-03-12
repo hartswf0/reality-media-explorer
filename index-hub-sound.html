@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reality Media Hub</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #001a33;
+            color: #fff;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        #container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .controls {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 26, 51, 0.8);
+            padding: 15px;
+            border-radius: 15px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(8px);
+            z-index: 10;
+        }
+        
+        .controls button {
+            background: #ffcc00;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        
+        .controls button:hover {
+            background: #ffdd33;
+        }
+        
+        .scene-info {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 26, 51, 0.8);
+            padding: 15px;
+            border-radius: 15px;
+            backdrop-filter: blur(8px);
+        }
+    </style>
+</head>
+<body>
+    <div id="container"></div>
+    
+    <div class="controls">
+        <button id="enableAudio">Enable Voice Control</button>
+        <button id="resetCamera">Reset Camera</button>
+    </div>
+    
+    <div class="scene-info">
+        <h3>Voice Controls:</h3>
+        <p>High pitch → Zoom in</p>
+        <p>Low pitch → Zoom out</p>
+        <p>Volume → Height</p>
+    </div>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="camera_rig.js"></script>
+    
+    <script>
+        // Scene setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x001a33);
+        scene.fog = new THREE.FogExp2(0x001a33, 0.015);
+        
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('container').appendChild(renderer.domElement);
+        
+        // Initialize camera rig
+        const cameraRig = new CameraRig(camera, {
+            orbitSpeed: 0.3,
+            orbitRadius: 15,
+            minRadius: 5,
+            maxRadius: 25,
+            minHeight: -8,
+            maxHeight: 15,
+            smoothing: 0.05
+        });
+        
+        // Create visualization nodes (matching RL viz style)
+        function createNode(position, color) {
+            const geometry = new THREE.BoxGeometry(2, 2, 2);
+            const material = new THREE.MeshPhongMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.8,
+                emissive: color,
+                emissiveIntensity: 0.3
+            });
+            const node = new THREE.Mesh(geometry, material);
+            node.position.copy(position);
+            return node;
+        }
+        
+        // Create grid of nodes representing our visualizations
+        const nodes = [
+            createNode(new THREE.Vector3(-6, 0, -6), 0x00ffff),  // Temporal Difference
+            createNode(new THREE.Vector3(6, 0, -6), 0xff00ff),   // Grid World
+            createNode(new THREE.Vector3(-6, 0, 6), 0xffff00),   // Episode Viewer
+            createNode(new THREE.Vector3(6, 0, 6), 0x00ff00)     // Learning Dynamics
+        ];
+        
+        nodes.forEach(node => scene.add(node));
+        
+        // Add connecting lines
+        const lineMaterial = new THREE.LineBasicMaterial({ 
+            color: 0x4444ff,
+            transparent: true,
+            opacity: 0.3
+        });
+        
+        nodes.forEach((node, i) => {
+            nodes.slice(i + 1).forEach(otherNode => {
+                const geometry = new THREE.BufferGeometry().setFromPoints([
+                    node.position,
+                    otherNode.position
+                ]);
+                const line = new THREE.Line(geometry, lineMaterial);
+                scene.add(line);
+            });
+        });
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x333333);
+        scene.add(ambientLight);
+        
+        const pointLight = new THREE.PointLight(0xffffff, 1, 100);
+        pointLight.position.set(0, 10, 0);
+        scene.add(pointLight);
+        
+        // Animation loop
+        const clock = new THREE.Clock();
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const delta = clock.getDelta();
+            
+            // Update camera rig
+            cameraRig.update(delta);
+            
+            // Animate nodes
+            nodes.forEach((node, i) => {
+                node.rotation.y += delta * 0.2;
+                node.position.y = Math.sin(clock.getElapsedTime() * 0.5 + i) * 0.5;
+            });
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Start animation
+        animate();
+        
+        // UI Controls
+        document.getElementById('enableAudio').addEventListener('click', () => {
+            if (!cameraRig.state.audioEnabled) {
+                cameraRig.initAudio();
+                document.getElementById('enableAudio').textContent = 'Audio Enabled';
+            }
+        });
+        
+        document.getElementById('resetCamera').addEventListener('click', () => {
+            cameraRig.setRadius(15);
+            cameraRig.state.targetHeight = 0;
+        });
+        
+        // Window resize handler
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

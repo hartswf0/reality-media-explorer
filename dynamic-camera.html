@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Award-Winning Underwater Music Visualizer</title>
+  <style>
+    /* Global page styles */
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: linear-gradient(135deg, #001a33, #003366, #004080);
+      font-family: 'Arial', sans-serif;
+    }
+    #container {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+    .controls {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 26, 51, 0.8);
+      padding: 15px;
+      border-radius: 15px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(8px);
+      color: #fff;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .controls label {
+      font-size: 14px;
+    }
+    .controls input[type="range"] {
+      width: 150px;
+    }
+    button {
+      background: #ffcc00;
+      border: none;
+      padding: 10px 15px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    button:hover {
+      background: #ffdd33;
+    }
+    .loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #001a33;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #ffcc00;
+      font-size: 24px;
+      z-index: 100;
+    }
+  </style>
+</head>
+<body>
+  <!-- Three.js will render into this container -->
+  <div id="container"></div>
+  
+  <!-- Control panel for VJ tuning -->
+  <div class="controls">
+    <button id="startAudio">Start Audio</button>
+    <label>Flow: <input type="range" id="flowSlider" min="0.5" max="3" step="0.1" value="1"></label>
+    <label>Color: <input type="range" id="colorSlider" min="0" max="1" step="0.01" value="0.5"></label>
+  </div>
+  
+  <!-- Loading screen -->
+  <div class="loading" id="loadingScreen">Loading...</div>
+  
+  <!-- Three.js and SimplexNoise from CDNs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+  <script src="video_capture_interface.js"></script>
+  
+  <script>
+    /*****************************************************
+     * Award-Winning Underwater Music Visualizer
+     *
+     * This refactored visualization is designed to be
+     * multidimensional, spunky, and customizable for a
+     * big show. It features:
+     * - A layered underwater scene (fish, bubbles, a particle net)
+     * - Continuous forward (swimming) camera motion with audio‐reactive oscillation
+     * - A bass drop detector that triggers dramatic scene changes,
+     *   including ripple (drop) effects and unexpected objects
+     * - Two HTML sliders ("Flow" and "Color") to let a VJ fine-tune
+     *   movement dynamics and overall color tone.
+     *****************************************************/
+
+    // Global variables and DOM references
+    let scene, camera, renderer;
+    const container = document.getElementById('container');
+    const loadingScreen = document.getElementById('loadingScreen');
+    const flowSlider = document.getElementById('flowSlider');
+    const colorSlider = document.getElementById('colorSlider');
+    const startAudioButton = document.getElementById('startAudio');
+
+    let flow = parseFloat(flowSlider.value);       // Movement multiplier
+    let colorTone = parseFloat(colorSlider.value);   // 0 = blueish, 1 = redish
+
+    // Listen for slider updates
+    flowSlider.addEventListener('input', () => { flow = parseFloat(flowSlider.value); });
+    colorSlider.addEventListener('input', () => { colorTone = parseFloat(colorSlider.value); });
+
+    // Audio variables
+    let audioContext, audioAnalyser, audioData;
+    let audioEnabled = false;
+
+    // Create a SimplexNoise instance for organic motion
+    const simplex = new SimplexNoise();
+
+    // Clock for animations
+    const clock = new THREE.Clock();
+
+    // Visual element arrays
+    let fishArray = [];
+    let bubbleArray = [];
+    let particleNet;
+    let dropEffects = [];
+    let unexpectedElements = [];
+
+    // Bass drop state
+    let bassDropTimer = 0;
+    let bassDropCooldown = 0;
+
+    // --- Audio Setup ---
+    function initAudio() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioAnalyser = audioContext.createAnalyser();
+        audioAnalyser.fftSize = 256;
+        audioData = new Uint8Array(audioAnalyser.frequencyBinCount);
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            let source = audioContext.createMediaStreamSource(stream);
+            source.connect(audioAnalyser);
+            audioEnabled = true;
+            startAudioButton.textContent = "Audio On";
+          })
+          .catch(err => {
+            console.error("Audio error:", err);
+            alert("Microphone access denied. Audio features disabled.");
+          });
+      }
+    }
+    startAudioButton.addEventListener('click', initAudio);
+
+    // --- Initialize Three.js Scene ---
+    function initScene() {
+      scene = new THREE.Scene();
+      // Set fog color by interpolating between blue and red based on colorTone slider
+      scene.fog = new THREE.FogExp2(new THREE.Color().lerpColors(new THREE.Color(0x001a33), new THREE.Color(0x330000), colorTone), 0.015);
+
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 300);
+      camera.position.set(0, 0, 50);
+
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      container.appendChild(renderer.domElement);
+
+      // Lights with red-tinged color influenced by colorTone slider
+      let ambient = new THREE.AmbientLight(new THREE.Color().lerpColors(new THREE.Color(0x003366), new THREE.Color(0xff3333), colorTone), 1.0);
+      scene.add(ambient);
+      let directional = new THREE.DirectionalLight(new THREE.Color().lerpColors(new THREE.Color(0x004080), new THREE.Color(0xff6666), colorTone), 0.8);
+      directional.position.set(50, 50, 50);
+      scene.add(directional);
+
+      // Create visual objects
+      createFish();
+      createBubbles();
+      createParticleNet();
+
+      // Hide loading screen after a short delay
+      setTimeout(() => { loadingScreen.style.display = 'none'; }, 1500);
+    }
+    window.addEventListener('resize', onWindowResize);
+    function onWindowResize() {
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    // --- Classes for Visual Elements ---
+    class Fish {
+      constructor() {
+        // A simple cone geometry to represent a fish
+        this.geometry = new THREE.ConeGeometry(2, 8, 16);
+        // Base color is determined by colorTone slider (interpolate between blue and red)
+        this.baseColor = new THREE.Color().lerpColors(new THREE.Color(0x0077ff), new THREE.Color(0xff3300), colorTone);
+        this.material = new THREE.MeshPhongMaterial({ color: this.baseColor, flatShading: true });
+        this.mesh = new THREE.Mesh(this.geometry, this.material);
+        this.reset();
+        scene.add(this.mesh);
+      }
+      reset() {
+        this.mesh.position.set(Math.random()*100 - 50, Math.random()*100 - 50, Math.random()*100 - 50);
+        this.speed = 0.1 + Math.random() * 0.5;
+        this.direction = new THREE.Vector3(Math.random()-0.5, Math.random()-0.5, Math.random()-0.5).normalize();
+      }
+      update(delta) {
+        // Move fish according to its speed and the global flow multiplier
+        this.mesh.position.addScaledVector(this.direction, this.speed * flow);
+        // Bounce off boundaries
+        if (Math.abs(this.mesh.position.x) > 50) this.direction.x *= -1;
+        if (Math.abs(this.mesh.position.y) > 50) this.direction.y *= -1;
+        if (Math.abs(this.mesh.position.z) > 50) this.direction.z *= -1;
+        // Smoothly update color based on slider changes
+        this.material.color.lerp(new THREE.Color().lerpColors(new THREE.Color(0x0077ff), new THREE.Color(0xff3300), colorTone), 0.05);
+      }
+    }
+
+    class Bubble {
+      constructor() {
+        this.geometry = new THREE.SphereGeometry(1, 16, 16);
+        this.material = new THREE.MeshPhongMaterial({ 
+          color: 0xffffff, 
+          transparent: true, 
+          opacity: 0.5, 
+          emissive: 0x111111, 
+          blending: THREE.AdditiveBlending 
+        });
+        this.mesh = new THREE.Mesh(this.geometry, this.material);
+        this.mesh.scale.setScalar(Math.random()*2 + 1);
+        this.reset();
+        scene.add(this.mesh);
+      }
+      reset() {
+        // Start bubbles below the view
+        this.mesh.position.set(Math.random()*100 - 50, -60, Math.random()*100 - 50);
+        this.speed = 0.2 + Math.random() * 0.3;
+      }
+      update(delta) {
+        this.mesh.position.y += this.speed * flow;
+        if (this.mesh.position.y > 60) this.reset();
+      }
+    }
+
+    // Create a particle net to simulate bubble nets in the background
+    function createParticleNet() {
+      const count = 3000;
+      const geometry = new THREE.BufferGeometry();
+      const positions = new Float32Array(count * 3);
+      for (let i = 0; i < count; i++) {
+        positions[i*3] = (Math.random()-0.5)*200;
+        positions[i*3+1] = (Math.random()-0.5)*200;
+        positions[i*3+2] = (Math.random()-0.5)*200;
+      }
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      const material = new THREE.PointsMaterial({ 
+        size: 1.5, 
+        color: 0xffffff, 
+        transparent: true, 
+        opacity: 0.7, 
+        blending: THREE.AdditiveBlending, 
+        depthWrite: false 
+      });
+      particleNet = new THREE.Points(geometry, material);
+      scene.add(particleNet);
+    }
+
+    // --- Create and Populate Scene Objects ---
+    function createFish() {
+      const fishCount = 15;
+      for (let i = 0; i < fishCount; i++) {
+        fishArray.push(new Fish());
+      }
+    }
+    function createBubbles() {
+      const bubbleCount = 30;
+      for (let i = 0; i < bubbleCount; i++) {
+        bubbleArray.push(new Bubble());
+      }
+    }
+
+    // --- Bass Drop Ripple Effect ---
+    class Drop {
+      constructor(position) {
+        this.geometry = new THREE.RingGeometry(1, 1.2, 32);
+        this.material = new THREE.MeshBasicMaterial({ 
+          color: 0xff3333, 
+          transparent: true, 
+          opacity: 0.8, 
+          side: THREE.DoubleSide, 
+          blending: THREE.AdditiveBlending 
+        });
+        this.mesh = new THREE.Mesh(this.geometry, this.material);
+        this.mesh.position.copy(position);
+        this.mesh.lookAt(camera.position);
+        this.age = 0;
+        scene.add(this.mesh);
+      }
+      update(delta) {
+        this.age += delta;
+        const scale = 1 + this.age * 5;
+        this.mesh.scale.set(scale, scale, scale);
+        this.material.opacity = Math.max(0, 0.8 - this.age * 1.5);
+        if (this.age > 0.8) {
+          scene.remove(this.mesh);
+          return false;
+        }
+        return true;
+      }
+    }
+
+    // --- Bass Drop and Unexpected Elements ---
+    function checkBassDrop(delta, elapsedTime) {
+      if (!audioEnabled || !audioData) return;
+      const bassLevel = getAudioLevel(80);
+      if (bassDropCooldown <= 0 && bassLevel > 0.8) {
+        triggerBassDrop();
+      }
+      if (bassDropCooldown > 0) bassDropCooldown -= delta;
+      if (bassDropTimer > 0) bassDropTimer -= delta;
+    }
+    function triggerBassDrop() {
+      bassDropTimer = 1.0;
+      bassDropCooldown = 2.0;
+      // Temporarily change fog color for dramatic effect
+      scene.fog.color.set(0x4444ff);
+      // Boost lights
+      scene.traverse(child => { if (child.isLight) child.intensity *= 1.5; });
+      // Spawn a drop effect at the center
+      const dropPos = new THREE.Vector3(0, 0, 0);
+      dropEffects.push(new Drop(dropPos));
+      // Spawn several unexpected elements
+      for (let i = 0; i < 5; i++) { spawnUnexpectedElement(); }
+    }
+    function spawnUnexpectedElement() {
+      const geometry = new THREE.TetrahedronGeometry(2 + Math.random()*2, 0);
+      const material = new THREE.MeshPhongMaterial({
+        color: new THREE.Color().setHSL(Math.random(), 0.8, 0.5),
+        transparent: true,
+        opacity: 0.9,
+        emissive: new THREE.Color(0.2, 0.0, 0.0),
+        blending: THREE.AdditiveBlending
+      });
+      const element = new THREE.Mesh(geometry, material);
+      element.position.set((Math.random()-0.5)*50, (Math.random()-0.5)*50, (Math.random()-0.5)*50);
+      element.userData = { lifetime: 1.0, baseColor: element.material.color.clone() };
+      scene.add(element);
+      unexpectedElements.push(element);
+    }
+    function updateUnexpectedElements(delta) {
+      for (let i = unexpectedElements.length - 1; i >= 0; i--) {
+        const elem = unexpectedElements[i];
+        elem.userData.lifetime -= delta;
+        elem.rotation.x += delta * Math.random();
+        elem.rotation.y += delta * Math.random();
+        // Update element color based on color slider: interpolate toward red when high
+        if (colorTone > 0.5) {
+          elem.material.color.copy(elem.userData.baseColor.clone().lerp(new THREE.Color(1, 0.2, 0.2), (colorTone - 0.5) * 2));
+        } else {
+          elem.material.color.copy(elem.userData.baseColor.clone().lerp(new THREE.Color(0.2, 0.2, 1), (0.5 - colorTone) * 2));
+        }
+        if (elem.userData.lifetime <= 0) {
+          scene.remove(elem);
+          unexpectedElements.splice(i, 1);
+        }
+      }
+    }
+
+    // --- Audio Functions ---
+    function updateAudioData() {
+      if (audioEnabled && audioAnalyser) {
+        audioAnalyser.getByteFrequencyData(audioData);
+      }
+    }
+    function getAudioLevel(frequency) {
+      if (!audioEnabled || !audioData) return 0;
+      const binIndex = Math.floor((frequency / 22050) * audioData.length);
+      return audioData[Math.min(Math.max(binIndex, 0), audioData.length - 1)] / 255;
+    }
+
+    // --- Animation Loop ---
+    function animate() {
+      requestAnimationFrame(animate);
+      updateAudioData();
+      const delta = clock.getDelta();
+      const elapsed = clock.getElapsedTime();
+      checkBassDrop(delta, elapsed);
+      render();
+      
+      // Signal that a frame was rendered (for debugging)
+      if (window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'FRAME_RENDERED' }, '*');
+      }
+    }
+
+    // --- Render Scene ---
+    function render() {
+      // Simulate constant forward swimming
+      camera.translateZ(-0.05 * flow);
+      // Audio-reactive camera oscillation (simulate riding the beat)
+      if (audioEnabled) {
+        const audioGlobal = getAudioLevel(500);
+        camera.position.x += Math.sin(clock.getElapsedTime() * 2) * audioGlobal * 2;
+        camera.position.y += Math.cos(clock.getElapsedTime() * 2) * audioGlobal * 2;
+      }
+      camera.lookAt(scene.position);
+
+      // Update fish
+      fishArray.forEach(fish => fish.update(clock.getDelta()));
+
+      // Update bubbles
+      bubbleArray.forEach(bubble => bubble.update(clock.getDelta()));
+
+      // Update particle net (apply subtle noise motion and modulate size by audio)
+      if (particleNet) {
+        const positions = particleNet.geometry.attributes.position.array;
+        for (let i = 0; i < positions.length; i += 3) {
+          positions[i] += simplex.noise3D(positions[i]*0.01, positions[i+1]*0.01, clock.getElapsedTime()*0.1) * 0.02 * flow;
+          positions[i+1] += simplex.noise3D(positions[i+1]*0.01, positions[i+2]*0.01, clock.getElapsedTime()*0.1) * 0.02 * flow;
+          positions[i+2] += simplex.noise3D(positions[i+2]*0.01, positions[i]*0.01, clock.getElapsedTime()*0.1) * 0.02 * flow;
+        }
+        particleNet.geometry.attributes.position.needsUpdate = true;
+        if (audioEnabled) {
+          const audioGlobal = getAudioLevel(400);
+          particleNet.material.size = 1.5 * (1 + audioGlobal * 1.5);
+        } else {
+          particleNet.material.size = 1.5;
+        }
+      }
+
+      // Update drop effects and unexpected elements
+      for (let i = dropEffects.length - 1; i >= 0; i--) {
+        if (!dropEffects[i].update(clock.getDelta())) {
+          dropEffects.splice(i, 1);
+        }
+      }
+      updateUnexpectedElements(clock.getDelta());
+
+      renderer.render(scene, camera);
+    }
+
+    // --- Input Handlers ---
+    let mouseX = 0, mouseY = 0;
+    function onMouseMove(event) {
+      mouseX = (event.clientX - window.innerWidth/2) * 0.05;
+      mouseY = (event.clientY - window.innerHeight/2) * 0.05;
+    }
+    function onTouchMove(event) {
+      if (event.touches.length === 1) {
+        mouseX = (event.touches[0].pageX - window.innerWidth/2) * 0.05;
+        mouseY = (event.touches[0].pageY - window.innerHeight/2) * 0.05;
+      }
+    }
+    window.addEventListener('mousemove', onMouseMove, false);
+    window.addEventListener('touchmove', onTouchMove, false);
+    window.addEventListener('resize', onWindowResize, false);
+
+    // --- Start the Visualizer ---
+    initScene();
+    animate();
+    
+    // Create a direct capture function for the video capture system
+    window.captureCurrentView = function() {
+      // Make sure we're using the latest camera position
+      camera.lookAt(scene.position);
+      
+      // Force a render with current camera and scene
+      renderer.render(scene, camera);
+      
+      // Return true to indicate success
+      return true;
+    };
+    
+    // Expose the renderer, scene, and camera directly for the video capture system
+    window._captureData = {
+      renderer: renderer,
+      scene: scene,
+      camera: camera
+    };
+    
+    // Signal to parent that the scene is ready
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: 'SCENE_READY' }, '*');
+    }
+    </script>
+</body>
+</html>

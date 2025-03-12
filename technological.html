@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Reality Media Memory Palace - Technological Realm</title>
+  <style>
+    body { margin: 0; background: #000; overflow: hidden; }
+    canvas { display: block; }
+    #info {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      color: #00FF00;
+      font-family: "Courier New", monospace;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px;
+      border-radius: 5px;
+      pointer-events: none;
+      border: 1px solid #00FF00;
+      text-shadow: 0 0 5px #00FF00;
+    }
+    #description {
+      position: fixed;
+      bottom: 60px;
+      right: 20px;
+      color: #00FFFF;
+      font-family: "Courier New", monospace;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 15px;
+      border-radius: 5px;
+      max-width: 400px;
+      border: 1px solid #0088FF;
+      text-shadow: 0 0 5px #00FFFF;
+    }
+    .navigation {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      color: #00FF00;
+      background: rgba(0, 0, 255, 0.3);
+      padding: 10px 20px;
+      border-radius: 5px;
+      text-decoration: none;
+      font-family: 'Courier New', monospace;
+      z-index: 100;
+      border: 1px solid #0088FF;
+      transition: all 0.3s ease;
+    }
+    .navigation:hover {
+      background: rgba(0, 0, 255, 0.6);
+      text-shadow: 0 0 10px #00FFFF;
+    }
+  </style>
+</head>
+<body>
+  <div id="info">TECHNOLOGICAL REALM | DIGITAL MEDIATION</div>
+  <div id="description">
+    A grid-based environment with rectilinear organization, featuring data streams, platform nodes, and matrix effects.
+    The visual themes include neon greens and blues, hard edges, and digital patterns.
+  </div>
+  <a href="index_hub.html" class="navigation">Return to Hub</a>
+  <a href="index.html" class="navigation" style="left: 180px;">Memory Palace</a>
+
+  <!-- Use module-based script imports -->
+  <script type="module">
+    // Import Three.js as a module along with the module version of OrbitControls
+    import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r136/three.module.js';
+    import { OrbitControls } from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r136/examples/jsm/controls/OrbitControls.js';
+
+    // Expose these variables globally for video capture compatibility
+    window.camera = null;
+    window.scene = null;
+    window.renderer = null;
+    window.controls = null;
+    
+    window.VideoCaptureInterface = {};
+    
+    const objects = [];
+    const dataStreams = [];
+    const platformNodes = [];
+    const matrixEffects = [];
+
+    // Initialize the scene and objects
+    init();
+    createTechnologicalEnvironment();
+    createDataStreams();
+    createPlatformNodes();
+    createMatrixEffects();
+    createDigitalPatterns();
+    
+    window.addEventListener('resize', onWindowResize, false);
+    animate();
+
+    function init() {
+      // Create scene with fog
+      window.scene = new THREE.Scene();
+      window.scene.fog = new THREE.FogExp2(0x000814, 0.01);
+      
+      // Create camera
+      window.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      window.camera.position.set(0, 30, 50);
+
+      // Create renderer and add to DOM
+      window.renderer = new THREE.WebGLRenderer({ antialias: true });
+      window.renderer.setSize(window.innerWidth, window.innerHeight);
+      window.renderer.setPixelRatio(window.devicePixelRatio);
+      window.renderer.setClearColor(0x000814);
+      document.body.appendChild(window.renderer.domElement);
+
+      // Create controls
+      window.controls = new OrbitControls(window.camera, window.renderer.domElement);
+      window.controls.enableDamping = true;
+      window.controls.dampingFactor = 0.05;
+      window.controls.maxDistance = 200;
+
+      // Update VideoCaptureInterface
+      window.VideoCaptureInterface.renderer = window.renderer;
+      window.VideoCaptureInterface.scene = window.scene;
+      window.VideoCaptureInterface.camera = window.camera;
+      window.VideoCaptureInterface.render = function() {
+        window.renderer.render(window.scene, window.camera);
+      };
+
+      // Create grid as part of the environment
+      createGrid();
+    }
+
+    function createTechnologicalEnvironment() {
+      // Digital Core
+      const coreGeometry = new THREE.BoxGeometry(20, 20, 20);
+      const coreMaterial = new THREE.MeshPhongMaterial({
+        color: 0x00FFFF,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.8,
+        emissive: 0x0088FF,
+        emissiveIntensity: 0.5
+      });
+      const core = new THREE.Mesh(coreGeometry, coreMaterial);
+      objects.push(core);
+      window.scene.add(core);
+
+      // Inner core
+      const innerGeometry = new THREE.BoxGeometry(18, 18, 18);
+      const innerMaterial = new THREE.MeshPhongMaterial({
+        color: 0x0088FF,
+        transparent: true,
+        opacity: 0.3,
+        emissive: 0x0044AA,
+        emissiveIntensity: 0.3
+      });
+      const innerCore = new THREE.Mesh(innerGeometry, innerMaterial);
+      objects.push(innerCore);
+      window.scene.add(innerCore);
+
+      // Core pulse effect
+      const pulseGeometry = new THREE.BoxGeometry(22, 22, 22);
+      const pulseMaterial = new THREE.MeshBasicMaterial({
+        color: 0x00FF88,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.2
+      });
+      const pulse = new THREE.Mesh(pulseGeometry, pulseMaterial);
+      pulse.userData = { pulseSpeed: 0.8 };
+      objects.push(pulse);
+      window.scene.add(pulse);
+
+      // Create central processing towers
+      const towerCount = 4;
+      for (let i = 0; i < towerCount; i++) {
+        const angle = (i / towerCount) * Math.PI * 2;
+        const distance = 30;
+        const position = new THREE.Vector3(
+          Math.cos(angle) * distance,
+          0,
+          Math.sin(angle) * distance
+        );
+        createProcessingTower(position, 40, 0x00FF88, 0x0088FF);
+      }
+
+      // Ambient light
+      const ambientLight = new THREE.AmbientLight(0x001133, 0.5);
+      window.scene.add(ambientLight);
+
+      // Point lights and markers
+      const colors = [0x00FF00, 0x00FFFF, 0x0088FF, 0x0044FF];
+      for (let i = 0; i < 8; i++) {
+        const light = new THREE.PointLight(colors[i % colors.length], 1, 100);
+        const angle = (i / 8) * Math.PI * 2;
+        const height = Math.sin(i * 0.8) * 20;
+        light.position.set(
+          Math.cos(angle) * 40,
+          height,
+          Math.sin(angle) * 40
+        );
+        window.scene.add(light);
+
+        // Light marker
+        const lightMarker = new THREE.Mesh(
+          new THREE.SphereGeometry(0.5, 16, 16),
+          new THREE.MeshBasicMaterial({ color: colors[i % colors.length] })
+        );
+        lightMarker.position.copy(light.position);
+        window.scene.add(lightMarker);
+      }
+
+      // Outer boundary
+      const boundaryGeometry = new THREE.BoxGeometry(200, 200, 200);
+      const boundaryMaterial = new THREE.MeshBasicMaterial({
+        color: 0x0088FF,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.1,
+        side: THREE.BackSide
+      });
+      const boundary = new THREE.Mesh(boundaryGeometry, boundaryMaterial);
+      window.scene.add(boundary);
+    }
+
+    function createProcessingTower(position, height, color1, color2) {
+      // Base of tower
+      const baseGeometry = new THREE.BoxGeometry(10, 2, 10);
+      const baseMaterial = new THREE.MeshPhongMaterial({
+        color: color2,
+        transparent: true,
+        opacity: 0.7
+      });
+      const base = new THREE.Mesh(baseGeometry, baseMaterial);
+      base.position.copy(position);
+      base.position.y = -height / 2 + 1;
+      window.scene.add(base);
+      
+      // Tower body
+      const towerGeometry = new THREE.BoxGeometry(6, height, 6);
+      const towerMaterial = new THREE.MeshPhongMaterial({
+        color: color1,
+        transparent: true,
+        opacity: 0.5,
+        emissive: color2,
+        emissiveIntensity: 0.3
+      });
+      const tower = new THREE.Mesh(towerGeometry, towerMaterial);
+      tower.position.copy(position);
+      window.scene.add(tower);
+      
+      // Data flow effect on tower
+      const flowGeometry = new THREE.PlaneGeometry(6.1, height);
+      const flowTexture = createDataFlowTexture();
+      const flowMaterial = new THREE.MeshBasicMaterial({
+        map: flowTexture,
+        transparent: true,
+        opacity: 0.7,
+        side: THREE.DoubleSide
+      });
+      
+      // Apply data flow on four sides
+      for (let i = 0; i < 4; i++) {
+        const flow = new THREE.Mesh(flowGeometry, flowMaterial.clone());
+        flow.position.copy(position);
+        flow.rotation.y = (Math.PI / 2) * i;
+        flow.userData = { 
+          isDataFlow: true,
+          speed: 0.01 + Math.random() * 0.02
+        };
+        window.scene.add(flow);
+        objects.push(flow);
+      }
+      
+      // Top beacon
+      const beaconGeometry = new THREE.ConeGeometry(3, 6, 4);
+      const beaconMaterial = new THREE.MeshPhongMaterial({
+        color: color1,
+        emissive: color1,
+        emissiveIntensity: 0.8
+      });
+      const beacon = new THREE.Mesh(beaconGeometry, beaconMaterial);
+      beacon.position.copy(position);
+      beacon.position.y = height / 2 + 3;
+      beacon.userData = { pulse: true, pulseSpeed: 0.5 + Math.random() * 0.5 };
+      window.scene.add(beacon);
+      objects.push(beacon);
+      
+      // Connection from tower to core
+      const points = [];
+      points.push(new THREE.Vector3(0, 0, 0));
+      points.push(position.clone());
+      
+      const connectionGeometry = new THREE.BufferGeometry().setFromPoints(points);
+      const connectionMaterial = new THREE.LineDashedMaterial({
+        color: color1,
+        dashSize: 1,
+        gapSize: 0.5,
+        transparent: true,
+        opacity: 0.6
+      });
+      const connection = new THREE.Line(connectionGeometry, connectionMaterial);
+      connection.computeLineDistances();
+      connection.userData = { isDashed: true };
+      window.scene.add(connection);
+      objects.push(connection);
+      
+      return tower;
+    }
+
+    function createDataFlowTexture() {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64;
+      canvas.height = 256;
+      const context = canvas.getContext('2d');
+      
+      // Dark background
+      context.fillStyle = 'rgba(0, 10, 20, 0.1)';
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Random data streams
+      for (let y = 0; y < canvas.height; y += 4) {
+        for (let x = 0; x < canvas.width; x += 4) {
+          if (Math.random() > 0.8) {
+            const brightness = Math.random();
+            const size = 1 + Math.floor(Math.random() * 3);
+            context.fillStyle = `rgba(0, ${Math.floor(150 + brightness * 105)}, ${Math.floor(100 + brightness * 155)}, ${0.5 + brightness * 0.5})`;
+            context.fillRect(x, y, size, size);
+          }
+        }
+      }
+      
+      // Horizontal scan lines
+      for (let y = 0; y < canvas.height; y += 16) {
+        context.fillStyle = 'rgba(0, 255, 200, 0.1)';
+        context.fillRect(0, y, canvas.width, 1);
+      }
+      
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      return texture;
+    }
+
+    function createGrid() {
+      // Horizontal grid
+      const size = 200;
+      const divisions = 40;
+      const gridHelper = new THREE.GridHelper(size, divisions, 0x00FF00, 0x004400);
+      gridHelper.material.transparent = true;
+      gridHelper.material.opacity = 0.3;
+      window.scene.add(gridHelper);
+
+      // Vertical grid (X)
+      const verticalGridX = new THREE.GridHelper(size, divisions, 0x00FFFF, 0x004444);
+      verticalGridX.rotation.x = Math.PI / 2;
+      verticalGridX.material.transparent = true;
+      verticalGridX.material.opacity = 0.15;
+      window.scene.add(verticalGridX);
+      
+      // Vertical grid (Z)
+      const verticalGridZ = new THREE.GridHelper(size, divisions, 0x0088FF, 0x002244);
+      verticalGridZ.rotation.z = Math.PI / 2;
+      verticalGridZ.material.transparent = true;
+      verticalGridZ.material.opacity = 0.15;
+      window.scene.add(verticalGridZ);
+
+      // Elevated platforms at grid intersections
+      for (let x = -80; x <= 80; x += 40) {
+        for (let z = -80; z <= 80; z += 40) {
+          if (Math.abs(x) < 30 && Math.abs(z) < 30) continue;
+          if (Math.random() > 0.6) {
+            const height = 5 + Math.random() * 15;
+            createElevatedPlatform(new THREE.Vector3(x, height / 2, z), 10, height);
+          }
+        }
+      }
+    }
+
+    function createElevatedPlatform(position, size, height) {
+      // Platform base
+      const baseGeometry = new THREE.BoxGeometry(size, height, size);
+      const baseMaterial = new THREE.MeshPhongMaterial({
+        color: 0x0066AA,
+        transparent: true,
+        opacity: 0.6
+      });
+      const base = new THREE.Mesh(baseGeometry, baseMaterial);
+      base.position.copy(position);
+      window.scene.add(base);
+      
+      // Platform top
+      const topGeometry = new THREE.BoxGeometry(size * 1.5, 1, size * 1.5);
+      const topMaterial = new THREE.MeshPhongMaterial({
+        color: 0x00AAFF,
+        transparent: true,
+        opacity: 0.8,
+        emissive: 0x0088FF,
+        emissiveIntensity: 0.3
+      });
+      const top = new THREE.Mesh(topGeometry, topMaterial);
+      top.position.copy(position);
+      top.position.y += height / 2 + 0.5;
+      window.scene.add(top);
+      
+      // Data node on top
+      if (Math.random() > 0.5) {
+        const nodeSize = 2 + Math.random() * 3;
+        const nodeGeometry = new THREE.SphereGeometry(nodeSize, 16, 16);
+        const nodeMaterial = new THREE.MeshPhongMaterial({
+          color: 0x00FF88,
+          emissive: 0x00FF88,
+          emissiveIntensity: 0.5,
+          transparent: true,
+          opacity: 0.9
+        });
+        const node = new THREE.Mesh(nodeGeometry, nodeMaterial);
+        node.position.copy(position);
+        node.position.y += height / 2 + nodeSize + 1;
+        node.userData = { pulse: true, pulseSpeed: 0.3 + Math.random() * 0.5 };
+        window.scene.add(node);
+        objects.push(node);
+        
+        if (Math.random() > 0.5) {
+          const targetPosition = new THREE.Vector3(0, 0, 0);
+          createDataBeam(node.position, targetPosition);
+        }
+      }
+    }
+
+    function createDataBeam(start, end) {
+      const points = [];
+      points.push(start);
+      const midPoint = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+      midPoint.y += 10 + Math.random() * 20;
+      const curve = new THREE.QuadraticBezierCurve3(start, midPoint, end);
+      
+      const pointCount = 50;
+      for (let i = 0; i <= pointCount; i++) {
+        points.push(curve.getPoint(i / pointCount));
+      }
+      
+      const beamGeometry = new THREE.BufferGeometry().setFromPoints(points);
+      const beamMaterial = new THREE.LineBasicMaterial({
+        color: 0x00FFAA,
+        transparent: true,
+        opacity: 0.6
+      });
+      const beam = new THREE.Line(beamGeometry, beamMaterial);
+      beam.userData = { isBeam: true };
+      window.scene.add(beam);
+      objects.push(beam);
+      
+      // Add particles along the beam
+      const particleCount = 20;
+      for (let i = 0; i < particleCount; i++) {
+        const particleGeometry = new THREE.SphereGeometry(0.3, 8, 8);
+        const particleMaterial = new THREE.MeshBasicMaterial({
+          color: 0x00FFAA,
+          transparent: true,
+          opacity: 0.8
+        });
+        const particle = new THREE.Mesh(particleGeometry, particleMaterial);
+        const position = curve.getPoint(Math.random());
+        particle.position.copy(position);
+        particle.userData = {
+          isParticle: true,
+          curve: curve,
+          speed: 0.005 + Math.random() * 0.01,
+          position: Math.random()
+        };
+        window.scene.add(particle);
+        objects.push(particle);
+      }
+    }
+
+    function createDataStreams() {
+      for (let i = 0; i < 20; i++) {
+        createDataStreamLine();
+      }
+    }
+    
+    function createDataStreamLine() {
+      const streamLength = 50 + Math.random() * 100;
+      const streamStart = new THREE.Vector3(
+        (Math.random() - 0.5) * 150,
+        (Math.random() - 0.5) * 150,
+        (Math.random() - 0.5) * 150
+      );
+      const streamDirection = new THREE.Vector3(
+        (Math.random() - 0.5),
+        (Math.random() - 0.5),
+        (Math.random() - 0.5)
+      ).normalize();
+      
+      const packetCount = 10 + Math.floor(Math.random() * 20);
+      const dataPackets = [];
+      const streamColor = new THREE.Color(
+        Math.random() * 0.2, 
+        0.5 + Math.random() * 0.5, 
+        0.7 + Math.random() * 0.3
+      );
+      
+      for (let j = 0; j < packetCount; j++) {
+        const packet = new THREE.Mesh(
+          new THREE.BoxGeometry(0.8, 0.8, 0.8),
+          new THREE.MeshPhongMaterial({
+            color: streamColor,
+            transparent: true,
+            opacity: 0.7 + Math.random() * 0.3,
+            emissive: streamColor,
+            emissiveIntensity: 0.5
+          })
+        );
+        const position = streamStart.clone().add(
+          streamDirection.clone().multiplyScalar(j * (streamLength / packetCount))
+        );
+        packet.position.copy(position);
+        window.scene.add(packet);
+        dataPackets.push({
+          mesh: packet,
+          speed: 0.1 + Math.random() * 0.3,
+          distance: j * (streamLength / packetCount),
+          maxDistance: streamLength
+        });
+      }
+      
+      dataStreams.push({
+        start: streamStart,
+        direction: streamDirection,
+        length: streamLength,
+        packets: dataPackets
+      });
+    }
+
+    function createPlatformNodes() {
+      for (let i = 0; i < 8; i++) {
+        const angle = (i / 8) * Math.PI * 2;
+        const radius = 60;
+        const position = new THREE.Vector3(
+          Math.cos(angle) * radius,
+          (Math.random() - 0.5) * 40,
+          Math.sin(angle) * radius
+        );
+        createPlatformNode(position, 5 + Math.random() * 5);
+      }
+    }
+    
+    function createPlatformNode(position, size) {
+      const platform = new THREE.Group();
+      platform.position.copy(position);
+      
+      const baseGeometry = new THREE.BoxGeometry(size * 2, size * 0.5, size * 2);
+      const baseMaterial = new THREE.MeshPhongMaterial({
+        color: 0x0088FF,
+        transparent: true,
+        opacity: 0.7,
+        emissive: 0x0044AA,
+        emissiveIntensity: 0.3
+      });
+      const base = new THREE.Mesh(baseGeometry, baseMaterial);
+      platform.add(base);
+      
+      const towerGeometry = new THREE.CylinderGeometry(size * 0.2, size * 0.3, size * 2, 8);
+      const towerMaterial = new THREE.MeshPhongMaterial({
+        color: 0x00FFFF,
+        transparent: true,
+        opacity: 0.8,
+        emissive: 0x00AAFF,
+        emissiveIntensity: 0.5
+      });
+      const tower = new THREE.Mesh(towerGeometry, towerMaterial);
+      tower.position.y = size;
+      platform.add(tower);
+      
+      window.scene.add(platform);
+      platformNodes.push({
+        group: platform,
+        rotationSpeed: 0.005 + Math.random() * 0.01,
+        pulseSpeed: 0.02 + Math.random() * 0.02,
+        pulsePhase: Math.random() * Math.PI * 2
+      });
+    }
+
+    function createMatrixEffects() {
+      for (let i = 0; i < 200; i++) {
+        const character = new THREE.Mesh(
+          new THREE.PlaneGeometry(1, 1),
+          new THREE.MeshBasicMaterial({
+            color: 0x00FF00,
+            transparent: true,
+            opacity: 0.3 + Math.random() * 0.7,
+            side: THREE.DoubleSide
+          })
+        );
+        character.position.set(
+          (Math.random() - 0.5) * 200,
+          (Math.random() - 0.5) * 200,
+          (Math.random() - 0.5) * 200
+        );
+        window.scene.add(character);
+        matrixEffects.push({
+          mesh: character,
+          fallSpeed: 0.2 + Math.random() * 0.8,
+          blinkSpeed: 0.05 + Math.random() * 0.1,
+          blinkPhase: Math.random() * Math.PI * 2
+        });
+      }
+    }
+    
+    function createDigitalPatterns() {
+      const circuitGeometry = new THREE.TorusKnotGeometry(30, 2, 128, 16);
+      const circuitMaterial = new THREE.MeshPhongMaterial({
+        color: 0x0088FF,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.3,
+        emissive: 0x0044AA,
+        emissiveIntensity: 0.2
+      });
+      const circuit = new THREE.Mesh(circuitGeometry, circuitMaterial);
+      window.scene.add(circuit);
+      objects.push(circuit);
+      
+      const sphereGeometry = new THREE.SphereGeometry(80, 32, 32);
+      const sphereMaterial = new THREE.MeshPhongMaterial({
+        color: 0x00FFFF,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.1,
+        emissive: 0x00AAFF,
+        emissiveIntensity: 0.1
+      });
+      const sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+      window.scene.add(sphere);
+      objects.push(sphere);
+    }
+
+    function onWindowResize() {
+      window.camera.aspect = window.innerWidth / window.innerHeight;
+      window.camera.updateProjectionMatrix();
+      window.renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      if (window.controls) window.controls.update();
+
+      objects.forEach(obj => {
+        if (!obj.userData || !obj.userData.isDataFlow) {
+          if (obj.rotation) {
+            obj.rotation.y += 0.002;
+            obj.rotation.x += 0.001;
+          }
+        }
+        
+        if (obj.userData && obj.userData.isDataFlow) {
+          if (obj.material && obj.material.map) {
+            obj.material.map.offset.y -= obj.userData.speed;
+            obj.material.map.needsUpdate = true;
+          }
+        }
+        
+        if (obj.userData && obj.userData.pulse) {
+          const pulse = Math.sin(Date.now() * 0.001 * obj.userData.pulseSpeed) * 0.5 + 0.5;
+          if (obj.material) {
+            obj.material.emissiveIntensity = 0.3 + pulse * 0.7;
+            obj.material.opacity = 0.7 + pulse * 0.3;
+          }
+        }
+        
+        if (obj.userData && obj.userData.isParticle && obj.userData.curve) {
+          obj.userData.position += obj.userData.speed;
+          if (obj.userData.position > 1) obj.userData.position = 0;
+          const newPos = obj.userData.curve.getPoint(obj.userData.position);
+          obj.position.copy(newPos);
+        }
+        
+        if (obj.userData && obj.userData.isDashed) {
+          obj.material.dashOffset -= 0.05;
+        }
+        
+        if (obj.userData && obj.userData.pulseSpeed) {
+          const scale = 1 + Math.sin(Date.now() * 0.001 * obj.userData.pulseSpeed) * 0.1;
+          obj.scale.set(scale, scale, scale);
+        }
+      });
+      
+      dataStreams.forEach(stream => {
+        stream.packets.forEach(packet => {
+          packet.distance += packet.speed;
+          if (packet.distance > packet.maxDistance) {
+            packet.distance = 0;
+          }
+          const position = stream.start.clone().add(
+            stream.direction.clone().multiplyScalar(packet.distance)
+          );
+          packet.mesh.position.copy(position);
+          packet.mesh.rotation.x += 0.02;
+          packet.mesh.rotation.y += 0.03;
+        });
+      });
+      
+      platformNodes.forEach(node => {
+        node.group.rotation.y += node.rotationSpeed;
+        const pulse = Math.sin(Date.now() * 0.001 * node.pulseSpeed + node.pulsePhase) * 0.5 + 0.5;
+        node.group.scale.set(1 + pulse * 0.2, 1 + pulse * 0.2, 1 + pulse * 0.2);
+        if (node.group.material) {
+          node.group.material.emissiveIntensity = 0.3 + pulse * 0.7;
+        }
+      });
+      
+      matrixEffects.forEach(effect => {
+        effect.mesh.position.y -= effect.fallSpeed;
+        if (effect.mesh.position.y < -100) {
+          effect.mesh.position.y = 100;
+        }
+        const blink = Math.sin(Date.now() * 0.001 * effect.blinkSpeed + effect.blinkPhase) * 0.5 + 0.5;
+        effect.mesh.material.opacity = blink * 0.7;
+      });
+
+      window.renderer.render(window.scene, window.camera);
+    }
+    
+    window._captureData = {
+      renderer: window.renderer,
+      scene: window.scene,
+      camera: window.camera
+    };
+    
+    window.captureCurrentView = function() {
+      if (window.controls) window.controls.update();
+      window.renderer.render(window.scene, window.camera);
+      return true;
+    };
+  </script>
+</body>
+</html>

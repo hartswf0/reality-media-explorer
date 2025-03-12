@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reality Media Explorer Hub</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #000;
+            color: #fff;
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+        }
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            width: 300px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #555;
+            border-radius: 5px;
+            pointer-events: none;
+            z-index: 100;
+        }
+        #menu {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #555;
+            border-radius: 20px;
+            padding: 10px 20px;
+            display: flex;
+            gap: 15px;
+            z-index: 100;
+        }
+        .menu-item {
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 15px;
+            transition: all 0.3s ease;
+            text-align: center;
+            min-width: 100px;
+        }
+        .menu-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        #timeline {
+            position: fixed;
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid #555;
+            border-radius: 5px;
+            padding: 10px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            height: 400px;
+        }
+        .era {
+            padding: 8px;
+            border-radius: 4px;
+            margin: 2px 0;
+            cursor: pointer;
+        }
+        .era:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .portal {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>Reality Media Explorer</h2>
+        <p>An immersive visualization of the themes and concepts from "Reality Media".</p>
+        <p>Navigate between the different thematic spaces to explore various aspects of presence and aura.</p>
+        <div id="realm-info"></div>
+    </div>
+    
+    <div id="menu">
+        <div class="menu-item" id="mystical-btn" style="background-color: rgba(107, 35, 142, 0.7);">Mystical</div>
+        <div class="menu-item" id="technological-btn" style="background-color: rgba(0, 255, 0, 0.3);">Technological</div>
+        <div class="menu-item" id="natural-btn" style="background-color: rgba(34, 139, 34, 0.5);">Natural</div>
+        <div class="menu-item" id="emotional-btn" style="background-color: rgba(255, 105, 180, 0.5);">Emotional</div>
+        <div class="menu-item" id="abstract-btn" style="background-color: rgba(128, 128, 128, 0.5);">Abstract</div>
+    </div>
+    
+    <div id="timeline" style="display: none;">
+        <h3>Timeline</h3>
+        <div class="era" style="background-color: rgba(139, 69, 19, 0.5);">Writing Era<br>3000 BCE - 1440 CE</div>
+        <div class="era" style="background-color: rgba(34, 139, 34, 0.5);">Print Era<br>1440 - 1900</div>
+        <div class="era" style="background-color: rgba(0, 0, 255, 0.5);">Broadcast Media<br>1900 - 2000</div>
+        <div class="era" style="background-color: rgba(255, 0, 255, 0.5);">Social Media<br>2000 - 2025</div>
+    </div>
+    
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/controls/OrbitControls.js';
+        
+        let camera, scene, renderer, controls;
+        let currentRealm = 'nexus';
+        
+        // Keep track of realm objects
+        const realms = {};
+        
+        // Theme parameters
+        const themes = {
+            mystical: {
+                colors: {
+                    primary: 0x6B238E,  // Deep purple
+                    secondary: 0xFFD700,  // Gold
+                    accent: 0x4B0082    // Indigo
+                },
+                description: "Explore the mystical dimensions of presence and aura in media experiences.",
+                link: "mystical.html"
+            },
+            technological: {
+                colors: {
+                    primary: 0x00FF00,  // Neon green
+                    secondary: 0x0000FF,  // Blue
+                    accent: 0xFF00FF    // Magenta
+                },
+                description: "Investigate the technological aspects of digital presence and mediation.",
+                link: "technological.html"
+            },
+            natural: {
+                colors: {
+                    primary: 0x228B22,  // Forest green
+                    secondary: 0x8B4513,  // Saddle brown
+                    accent: 0x87CEEB    // Sky blue
+                },
+                description: "Experience the organic, embodied nature of presence through natural metaphors.",
+                link: "natural.html"
+            },
+            emotional: {
+                colors: {
+                    primary: 0xFF69B4,  // Hot pink
+                    secondary: 0xFF4500,  // Orange red
+                    accent: 0x9370DB    // Medium purple
+                },
+                description: "Feel the emotional resonance of presence and connection in mediated experiences.",
+                link: "emotional.html"
+            },
+            abstract: {
+                colors: {
+                    primary: 0xFFFFFF,  // White
+                    secondary: 0x000000,  // Black
+                    accent: 0x808080    // Gray
+                },
+                description: "Analyze the theoretical frameworks of media evolution from 3000 BCE to 2025 CE.",
+                link: "abstract.html"
+            }
+        };
+        
+        init();
+        animate();
+        
+        function init() {
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x000000, 0.01);
+            
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 30, 50);
+            
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            // Controls setup
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.maxDistance = 100;
+            
+            // Expose THREE.js objects to global window scope for video capture
+            window.renderer = renderer;
+            window.scene = scene;
+            window.camera = camera;
+            
+            // Create VideoCaptureInterface
+            window.VideoCaptureInterface = {
+                renderer: renderer,
+                scene: scene,
+                camera: camera,
+                render: function() {
+                    renderer.render(scene, camera);
+                }
+            };
+            
+            console.log('THREE.js objects exposed to global scope for video capture');
+            
+            // Create central hub - Nexus
+            createNexus();
+            
+            // Add event listeners
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('click', onClick);
+            
+            // Setup menu buttons
+            document.getElementById('mystical-btn').addEventListener('click', () => switchRealm('mystical'));
+            document.getElementById('technological-btn').addEventListener('click', () => switchRealm('technological'));
+            document.getElementById('natural-btn').addEventListener('click', () => switchRealm('natural'));
+            document.getElementById('emotional-btn').addEventListener('click', () => switchRealm('emotional'));
+            document.getElementById('abstract-btn').addEventListener('click', () => {
+                switchRealm('abstract');
+                document.getElementById('timeline').style.display = 'flex';
+            });
+        }
+        
+        function createNexus() {
+            const nexusGroup = new THREE.Group();
+            nexusGroup.name = 'nexus';
+            realms.nexus = nexusGroup;
+            
+            // Central platform
+            const platformGeometry = new THREE.CylinderGeometry(20, 20, 2, 32);
+            const platformMaterial = new THREE.MeshPhongMaterial({ 
+                color: 0x333333,
+                shininess: 100
+            });
+            const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+            platform.position.y = -1;
+            nexusGroup.add(platform);
+            
+            // Add central rotunda
+            const rotundaGeometry = new THREE.CylinderGeometry(10, 10, 10, 32, 1, true);
+            const rotundaMaterial = new THREE.MeshPhongMaterial({
+                color: 0xAAAAAA,
+                transparent: true,
+                opacity: 0.5,
+                side: THREE.DoubleSide
+            });
+            const rotunda = new THREE.Mesh(rotundaGeometry, rotundaMaterial);
+            rotunda.position.y = 5;
+            nexusGroup.add(rotunda);
+            
+            // Add portals to each realm
+            const realmPositions = [
+                { name: 'mystical', position: new THREE.Vector3(15, 5, 0), rotation: new THREE.Euler(0, 0, 0) },
+                { name: 'technological', position: new THREE.Vector3(0, 5, 15), rotation: new THREE.Euler(0, Math.PI/2, 0) },
+                { name: 'natural', position: new THREE.Vector3(-15, 5, 0), rotation: new THREE.Euler(0, Math.PI, 0) },
+                { name: 'emotional', position: new THREE.Vector3(0, 5, -15), rotation: new THREE.Euler(0, -Math.PI/2, 0) },
+                { name: 'abstract', position: new THREE.Vector3(0, 15, 0), rotation: new THREE.Euler(Math.PI/2, 0, 0) }
+            ];
+            
+            realmPositions.forEach(data => {
+                createPortal(data.name, data.position, data.rotation, nexusGroup);
+            });
+            
+            // Add ambient light
+            const ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.5);
+            nexusGroup.add(ambientLight);
+            
+            // Add directional light
+            const directionalLight = new THREE.DirectionalLight(0xFFFFFF, 0.8);
+            directionalLight.position.set(0, 20, 10);
+            nexusGroup.add(directionalLight);
+            
+            scene.add(nexusGroup);
+        }
+        
+        function createPortal(realmName, position, rotation, parentGroup) {
+            const theme = themes[realmName];
+            
+            // Create portal ring
+            const portalGeometry = new THREE.TorusGeometry(3, 0.5, 16, 32);
+            const portalMaterial = new THREE.MeshPhongMaterial({
+                color: theme.colors.primary,
+                emissive: theme.colors.primary,
+                emissiveIntensity: 0.5,
+                shininess: 100
+            });
+            const portal = new THREE.Mesh(portalGeometry, portalMaterial);
+            portal.position.copy(position);
+            portal.rotation.copy(rotation);
+            portal.userData = { type: 'portal', targetRealm: realmName };
+            portal.name = `portal-${realmName}`;
+            
+            // Add a text label
+            const label = createTextLabel(realmName.charAt(0).toUpperCase() + realmName.slice(1), 
+                new THREE.Vector3(position.x, position.y + 4, position.z));
+            
+            parentGroup.add(portal);
+            parentGroup.add(label);
+            
+            // Add particle effects around portal
+            addPortalParticles(portal, theme.colors.secondary);
+            
+            return portal;
+        }
+        
+        function addPortalParticles(portal, color) {
+            const particlesGeometry = new THREE.BufferGeometry();
+            const particleCount = 100;
+            const posArray = new Float32Array(particleCount * 3);
+            
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = 3 + (Math.random() * 0.5);
+                
+                posArray[i] = portal.position.x + Math.cos(angle) * radius;
+                posArray[i+1] = portal.position.y + (Math.random() - 0.5) * 2;
+                posArray[i+2] = portal.position.z + Math.sin(angle) * radius;
+            }
+            
+            particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            
+            const particlesMaterial = new THREE.PointsMaterial({
+                size: 0.1,
+                color: color,
+                transparent: true,
+                opacity: 0.8
+            });
+            
+            const particleSystem = new THREE.Points(particlesGeometry, particlesMaterial);
+            portal.parent.add(particleSystem);
+            
+            // Store reference for animation
+            particleSystem.userData = { 
+                portal: portal.name,
+                originalPositions: [...posArray]
+            };
+            
+            return particleSystem;
+        }
+        
+        function createTextLabel(text, position) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 256;
+            canvas.height = 64;
+            
+            context.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            
+            context.font = 'Bold 20px Arial';
+            context.fillStyle = 'white';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(text, canvas.width / 2, canvas.height / 2);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.minFilter = THREE.LinearFilter;
+            const material = new THREE.SpriteMaterial({ map: texture });
+            const sprite = new THREE.Sprite(material);
+            
+            sprite.position.copy(position);
+            sprite.scale.set(5, 1.25, 1);
+            
+            return sprite;
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function onClick(event) {
+            const mouse = new THREE.Vector2();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            
+            const raycaster = new THREE.Raycaster();
+            raycaster.setFromCamera(mouse, camera);
+            
+            const intersects = raycaster.intersectObjects(scene.children, true);
+            
+            if (intersects.length > 0) {
+                let clickedObject = intersects[0].object;
+                
+                // Traverse up to find object with userData
+                while (clickedObject && !clickedObject.userData?.type) {
+                    clickedObject = clickedObject.parent;
+                }
+                
+                if (clickedObject && clickedObject.userData.type === 'portal') {
+                    const realmName = clickedObject.userData.targetRealm;
+                    
+                    // Navigate to the specific realm page
+                    window.location.href = themes[realmName].link;
+                }
+            }
+        }
+        
+        function switchRealm(realmName) {
+            // Update the info display
+            updateRealmInfo(realmName);
+            
+            // Hide timeline if not in abstract realm
+            if (realmName !== 'abstract') {
+                document.getElementById('timeline').style.display = 'none';
+            } else {
+                document.getElementById('timeline').style.display = 'flex';
+            }
+            
+            // Highlight the current realm button
+            document.querySelectorAll('.menu-item').forEach(item => {
+                item.style.border = 'none';
+            });
+            document.getElementById(`${realmName}-btn`).style.border = '2px solid white';
+            
+            // If realm exists, simply navigate to it
+            window.location.href = themes[realmName].link;
+        }
+        
+        function updateRealmInfo(realmName) {
+            const infoDiv = document.getElementById('realm-info');
+            
+            if (realmName === 'nexus') {
+                infoDiv.innerHTML = `
+                    <h3>Navigation Hub</h3>
+                    <p>Welcome to the central nexus of Reality Media Explorer. 
+                    Choose a realm to explore different aspects of presence and aura.</p>
+                `;
+            } else {
+                const theme = themes[realmName];
+                infoDiv.innerHTML = `
+                    <h3>${realmName.charAt(0).toUpperCase() + realmName.slice(1)} Realm</h3>
+                    <p>${theme.description}</p>
+                `;
+            }
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            // Update controls
+            controls.update();
+            
+            // Animate portal particles
+            scene.traverse(object => {
+                if (object instanceof THREE.Points && object.userData.portal) {
+                    const positions = object.geometry.attributes.position.array;
+                    const originalPositions = object.userData.originalPositions;
+                    
+                    for (let i = 0; i < positions.length; i += 3) {
+                        const time = Date.now() * 0.001;
+                        
+                        // Create subtle movement around the original position
+                        positions[i] = originalPositions[i] + Math.sin(time + i) * 0.03;
+                        positions[i+1] = originalPositions[i+1] + Math.cos(time + i) * 0.03;
+                        positions[i+2] = originalPositions[i+2] + Math.sin(time * 0.5 + i) * 0.03;
+                    }
+                    
+                    object.geometry.attributes.position.needsUpdate = true;
+                }
+            });
+            
+            // Render scene
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>

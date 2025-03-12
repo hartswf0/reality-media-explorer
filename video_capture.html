@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reality Media Video Capture</title>
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+        }
+        
+        #capture-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        
+        #control-panel {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 300px;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px;
+            z-index: 2;
+            overflow-y: auto;
+            box-sizing: border-box;
+        }
+        
+        .progress-container {
+            margin: 10px 0;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .progress {
+            width: 0%;
+            height: 100%;
+            background: #4CAF50;
+            transition: width 0.3s ease;
+        }
+        
+        .log-container {
+            margin-top: 20px;
+            height: 150px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 5px;
+            font-size: 12px;
+        }
+        
+        .log-entry {
+            margin: 5px 0;
+            font-family: monospace;
+        }
+        
+        .log-info { color: #fff; }
+        .log-success { color: #4CAF50; }
+        .log-warning { color: #FFC107; }
+        .log-error { color: #F44336; }
+        
+        .metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .metric {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .sequence-timeline {
+            margin: 20px 0;
+            display: flex;
+            gap: 2px;
+            flex-wrap: wrap;
+        }
+        
+        .sequence-step {
+            flex: 1;
+            min-width: 20px;
+            height: 6px;
+            background: #333;
+            border-radius: 3px;
+            position: relative;
+            cursor: pointer;
+            margin-bottom: 4px;
+        }
+        
+        .sequence-step:hover::after {
+            content: attr(data-name);
+            position: absolute;
+            bottom: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        
+        .sequence-step.active {
+            background: #4CAF50;
+        }
+        
+        .sequence-step.completed {
+            background: #81C784;
+        }
+
+        .current-realm {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .realm-details {
+            margin-top: 5px;
+            font-size: 12px;
+            color: #aaa;
+        }
+        
+        .preview-container {
+            margin: 15px 0;
+            border: 1px solid #444;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        #preview-canvas {
+            width: 100%;
+            background: #000;
+            display: block;
+        }
+        
+        .camera-info {
+            margin: 10px 0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 5px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div id="capture-container"></div>
+    
+    <div id="control-panel">
+        <h2>Video Capture Control</h2>
+        
+        <div class="metrics">
+            <div class="metric">
+                <div>FPS</div>
+                <div id="current-fps">0 fps</div>
+            </div>
+            <div class="metric">
+                <div>Memory</div>
+                <div id="memory-usage">0 MB</div>
+            </div>
+        </div>
+        
+        <div class="current-realm">
+            <div id="current-scene">Current: Initializing...</div>
+            <div id="realm-details" class="realm-details">
+                Duration: -- / --s<br>
+                Frame: -- / --
+            </div>
+            <div class="file-selector">
+                <h3>Select HTML File to Capture</h3>
+                <select id="html-file-selector">
+                    <option value="index_hub.html">Index Hub</option>
+                    <option value="mystical.html">Mystical</option>
+                    <option value="natural.html">Natural</option>
+                    <option value="technological.html">Technological</option>
+                    <option value="abstract.html">Abstract</option>
+                    <option value="q-learning-grid-world.html">Q-Learning Grid World</option>
+                    <option value="temporal-difference.html">Temporal Difference</option>
+                    <option value="q-learning-episode-viewer.html">Q-Learning Episode Viewer</option>
+                    <option value="dynamic-camera.html">Dynamic Camera</option>
+                </select>
+                <button id="load-file-btn">Load Selected File</button>
+            </div>
+        </div>
+        
+        <div id="camera-info" class="camera-info">
+            <div>Position: (0.0, 0.0, 0.0)</div>
+            <div>Orbit Angle: 0.0°</div>
+            <div>FOV: 75.0°</div>
+        </div>
+        
+        <div class="preview-container">
+            <h3>Camera Preview</h3>
+            <canvas id="preview-canvas" width="260" height="150"></canvas>
+        </div>
+        
+        <div class="sequence-timeline" id="sequence-timeline">
+            <!-- Sequence steps will be generated dynamically -->
+        </div>
+        
+        <div class="progress-container">
+            <h3 id="capture-status">Initializing...</h3>
+            <div class="progress-bar">
+                <div id="capture-progress" class="progress"></div>
+            </div>
+        </div>
+        
+        <div class="control-buttons">
+            <button id="start-btn">Start Capture</button>
+            <button id="pause-btn" disabled>Pause</button>
+            <button id="resume-btn" disabled>Resume</button>
+            <button id="restart-btn" disabled>Restart</button>
+        </div>
+        
+        <div class="log-container" id="log-container"></div>
+    </div>
+    
+    <!-- Initialize global functions first -->
+    <script>
+        // Utility functions
+        window.log = function(message, type = 'info') {
+            const container = document.getElementById('log-container');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        };
+        
+        window.handleError = function(error, context) {
+            const message = `Error in ${context}: ${error.message}`;
+            window.log(message, 'error');
+            console.error(error);
+        };
+        
+        // Update performance metrics
+        function updateMetrics() {
+            const fps = window.frameCount ? Math.round(window.frameCount / (Date.now() - startTime) * 1000) : 0;
+            document.getElementById('current-fps').textContent = `${fps} fps`;
+            
+            const memory = performance.memory?.usedJSHeapSize;
+            if (memory) {
+                document.getElementById('memory-usage').textContent = `${Math.round(memory / 1024 / 1024)} MB`;
+            }
+        }
+        
+        window.log('Loading dependencies');
+        const startTime = Date.now();
+        setInterval(updateMetrics, 1000);
+        
+        // Setup camera controls when the page loads
+        window.addEventListener('load', function() {
+            // No need for camera controls as they're not working properly
+            // We'll update the camera info display only
+        });
+    </script>
+    
+    <!-- Load CCapture -->
+    <script src="js/lib/CCapture.all.min.js"></script>
+    
+    <!-- Load video capture app -->
+    <script type="module" src="video_capture_app.js"></script>
+</body>
+</html>

@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Vital Brick Teeter Totter (Conway + 3D Bricks)</title>
+  <style>
+    body {
+      margin: 0; overflow: hidden;
+      background: #1a1a1a;
+      font-family: Arial, sans-serif;
+    }
+    /* Foreground (Three.js) container */
+    #container {
+      position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 2;
+    }
+    /* Background canvas */
+    #brickCanvas {
+      position: fixed; top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 1; display: block;
+    }
+    /* Control panel */
+    .controls {
+      position: fixed; bottom: 20px; left: 20px;
+      background: rgba(0,26,51,0.8);
+      padding: 15px; border-radius: 15px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+      backdrop-filter: blur(8px);
+      color: #fff; z-index: 10;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .controls label { font-size: 14px; }
+    .controls input[type="range"] { width: 150px; }
+    button {
+      background: #ffcc00; border: none; padding: 10px 15px;
+      border-radius: 20px; cursor: pointer; font-weight: bold;
+      transition: all 0.3s;
+    }
+    button:hover { background: #ffdd33; }
+    /* Video feed for movement detection (optional to hide) */
+    #cameraFeed {
+      position: fixed; bottom: 10px; right: 10px; width: 160px;
+      border: 2px solid #666; z-index: 11;
+      /* display: none; */ /* uncomment to hide */
+    }
+  </style>
+</head>
+<body>
+  <!-- Foreground: 3D container -->
+  <div id="container"></div>
+  
+  <!-- Background: brick canvas (Conway + camera) -->
+  <canvas id="brickCanvas"></canvas>
+  
+  <!-- Controls -->
+  <div class="controls">
+    <button id="startAudio">Audio On</button>
+    <label>Flow: <input type="range" id="flowSlider" min="0.5" max="3" step="0.1" value="1"/></label>
+    <label>Color: <input type="range" id="colorSlider" min="0" max="1" step="0.01" value="0.5"/></label>
+  </div>
+  
+  <!-- Camera feed for motion detection -->
+  <video id="cameraFeed" autoplay muted></video>
+
+  <!-- External libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/simplex-noise/2.4.0/simplex-noise.min.js"></script>
+
+  <!-- FOREGROUND: Billboarded Brick Particles (Sound-driven) -->
+  <script>
+    /********************************************************
+     * Foreground – 3D Billboards
+     * 
+     * Uses the same approach as your snippet for billboarded
+     * bricks, but we share a total "brick resource" with the
+     * background. If the camera movement is high, the background
+     * "uses" more bricks, leaving fewer for the foreground.
+     ********************************************************/
+    let scene, camera, renderer;
+    let flowSlider = document.getElementById('flowSlider');
+    let colorSlider = document.getElementById('colorSlider');
+    let startAudioButton = document.getElementById('startAudio');
+
+    let flow = parseFloat(flowSlider.value);
+    let colorTone = parseFloat(colorSlider.value);
+    flowSlider.oninput = () => { flow = parseFloat(flowSlider.value); };
+    colorSlider.oninput = () => { colorTone = parseFloat(colorSlider.value); };
+
+    // Audio setup
+    let audioContext, audioAnalyser, audioData;
+    let audioEnabled = false;
+
+    // Simplex noise & clock
+    const simplex = new SimplexNoise();
+    const clock = new THREE.Clock();
+
+    // Finite resource pool
+    const MAX_PARTICLES = 1000; // total "brick" resource
+    const MIN_ACTIVE = 50;      // minimal usage in total silence/stillness
+
+    // Arrays for geometry
+    let positions, velocities;
+    let geometry, particleMaterial, particles;
+    let shuffledIndices = [];
+
+    function initAudio() {
+      if (!audioContext) {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        audioAnalyser = audioContext.createAnalyser();
+        audioAnalyser.fftSize = 256;
+        audioData = new Uint8Array(audioAnalyser.frequencyBinCount);
+
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            let source = audioContext.createMediaStreamSource(stream);
+            source.connect(audioAnalyser);
+            audioEnabled = true;
+            startAudioButton.textContent = "Audio On";
+          })
+          .catch(err => {
+            console.error("Audio error:", err);
+            alert("Microphone access denied. Audio features disabled.");
+          });
+      }
+    }
+    startAudioButton.onclick = initAudio;
+
+    function updateAudioData() {
+      if (audioEnabled && audioAnalyser) {
+        audioAnalyser.getByteFrequencyData(audioData);
+      }
+    }
+    function getAudioLevel(freq) {
+      if (!audioEnabled || !audioData) return 0;
+      let bin = Math.floor((freq / 22050) * audioData.length);
+      return audioData[Math.min(Math.max(bin,0), audioData.length-1)] / 255;
+    }
+
+    // Create a 2:1 brick texture
+    function createBrickTexture() {
+      const w = 64, h = 32;
+      let c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      let ctx = c.getContext('2d');
+
+      // Fill with terracotta
+      ctx.fillStyle = "hsl(30, 70%, 45%)";
+      ctx.fillRect(0,0,w,h);
+
+      // Subtle mortar lines
+      ctx.strokeStyle = "hsl(30, 20%, 30%)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, h/2); ctx.lineTo(w, h/2);
+      ctx.moveTo(w/2, 0); ctx.lineTo(w/2, h);
+      ctx.stroke();
+
+      return new THREE.CanvasTexture(c);
+    }
+
+    function initScene() {
+      scene = new THREE.Scene();
+      // Fog in a terracotta hue
+      scene.fog = new THREE.FogExp2(new THREE.Color("hsl(30,70%,45%)"), 0.015);
+
+      camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 300);
+      camera.position.set(0,0,50);
+
+      renderer = new THREE.WebGLRenderer({antialias:true, alpha:true});
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setClearColor(0x000000, 0);
+      document.getElementById('container').appendChild(renderer.domElement);
+
+      // Build a Points-based system
+      geometry = new THREE.BufferGeometry();
+      positions = new Float32Array(MAX_PARTICLES*3);
+      velocities = new Float32Array(MAX_PARTICLES*3);
+
+      for (let i=0; i<MAX_PARTICLES; i++){
+        positions[i*3]   = Math.random()*100 - 50;
+        positions[i*3+1] = Math.random()*100 - 50;
+        positions[i*3+2] = Math.random()*100 - 50;
+        velocities[i*3]   = (Math.random()-0.5)*0.2;
+        velocities[i*3+1] = (Math.random()-0.5)*0.2;
+        velocities[i*3+2] = (Math.random()-0.5)*0.2;
+        shuffledIndices.push(i);
+      }
+      shuffledIndices.sort(()=>Math.random()-0.5);
+
+      geometry.setAttribute('position', new THREE.BufferAttribute(positions,3));
+
+      particleMaterial = new THREE.PointsMaterial({
+        size: 8,
+        map: createBrickTexture(),
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        color: new THREE.Color("hsl(30,70%,45%)")
+      });
+
+      particles = new THREE.Points(geometry, particleMaterial);
+      scene.add(particles);
+    }
+
+    // Randomly reorder the front N positions so active bricks are unpredictable
+    function applyRandomSubset(activeCount){
+      for (let i=0; i<activeCount; i++){
+        let srcIndex = shuffledIndices[i];
+        let srcOff = srcIndex*3;
+        let dstOff = i*3;
+        positions[dstOff]   = positions[srcOff];
+        positions[dstOff+1] = positions[srcOff+1];
+        positions[dstOff+2] = positions[srcOff+2];
+      }
+      geometry.attributes.position.needsUpdate = true;
+      geometry.setDrawRange(0, activeCount);
+    }
+
+    function animateThree() {
+      requestAnimationFrame(animateThree);
+      updateAudioData();
+
+      // "movementLevel" is set by the background script
+      let movementFactor = window.movementLevel || 0;
+      let soundFactor = getAudioLevel(500);
+
+      // Combined factor => how many bricks in total
+      let combined = Math.max(0.001, movementFactor + soundFactor);
+      let avg = combined / 2;
+      let totalActive = MIN_ACTIVE + (MAX_PARTICLES - MIN_ACTIVE)*avg;
+
+      // Foreground portion is proportional to sound vs movement
+      let fgRatio = soundFactor / combined;
+      let fgCount = Math.floor(totalActive * fgRatio);
+
+      // Shuffle
+      shuffledIndices.sort(()=>Math.random()-0.5);
+      applyRandomSubset(fgCount);
+
+      // Animate camera gently by sound
+      if (audioEnabled) {
+        camera.position.x += Math.sin(clock.getElapsedTime()*2)*soundFactor*2;
+        camera.position.y += Math.cos(clock.getElapsedTime()*2)*soundFactor*2;
+      }
+      camera.translateZ(-0.05 * flow);
+      camera.lookAt(scene.position);
+
+      // Update positions for all possible bricks, scaled by soundFactor
+      let delta = clock.getDelta();
+      for (let i=0; i<MAX_PARTICLES; i++){
+        let ix = i*3, iy=i*3+1, iz=i*3+2;
+        positions[ix] += velocities[ix]* delta* flow* soundFactor;
+        positions[iy] += velocities[iy]* delta* flow* soundFactor;
+        positions[iz] += velocities[iz]* delta* flow* soundFactor;
+
+        // bounce
+        if (Math.abs(positions[ix])>50) velocities[ix]*=-1;
+        if (Math.abs(positions[iy])>50) velocities[iy]*=-1;
+        if (Math.abs(positions[iz])>50) velocities[iz]*=-1;
+
+        // subtle noise
+        velocities[ix] += simplex.noise3D(positions[ix],positions[iy],clock.getElapsedTime())*0.001;
+        velocities[iy] += simplex.noise3D(positions[iy],positions[iz],clock.getElapsedTime())*0.001;
+        velocities[iz] += simplex.noise3D(positions[iz],positions[ix],clock.getElapsedTime())*0.001;
+      }
+
+      // Color shift from the color slider
+      let matColor = new THREE.Color().setHSL(30/360, 0.7, 0.45 - 0.15*colorTone);
+      particleMaterial.color.lerp(matColor, 0.1);
+      scene.fog.color.lerp(matColor, 0.1);
+
+      renderer.render(scene, camera);
+    }
+
+    initScene();
+    animateThree();
+
+    window.addEventListener('resize', ()=>{
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+
+  <!-- BACKGROUND: Conway's Game of Life (Movement-driven) with 24×12 bricks -->
+  <script>
+    /********************************************************************
+     * BACKGROUND – Vital Conway’s Game of Life
+     * 
+     * Each cell is drawn as a 24×12 "brick," same size as before.
+     * The camera feed's motion influences random births.
+     * 
+     * We also "cap" the max number of alive cells based on how many
+     * "brick resources" remain after the foreground is allocated.
+     ********************************************************************/
+
+    const brickCanvas = document.getElementById('brickCanvas');
+    const ctx = brickCanvas.getContext('2d');
+    const video = document.getElementById('cameraFeed');
+
+    const BRICK_W=24, BRICK_H=12;  // same size you liked
+    let lifeWidth, lifeHeight;     // # cells horizontally, vertically
+    let cellArrayA, cellArrayB;
+
+    function resizeCanvas(){
+      brickCanvas.width = window.innerWidth;
+      brickCanvas.height = window.innerHeight;
+      // compute # of cells
+      lifeWidth  = Math.ceil(brickCanvas.width / BRICK_W);
+      lifeHeight = Math.ceil(brickCanvas.height / BRICK_H);
+      // re-init arrays
+      cellArrayA = new Array(lifeWidth*lifeHeight).fill(0);
+      cellArrayB = new Array(lifeWidth*lifeHeight).fill(0);
+      // random init
+      for(let i=0; i<cellArrayA.length; i++){
+        cellArrayA[i] = Math.random()<0.2?1:0;
+      }
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // measure camera motion
+    let lastFrameData;
+    navigator.mediaDevices.getUserMedia({video:true})
+      .then(stream => { video.srcObject = stream; })
+      .catch(err => console.error("Camera error:", err));
+
+    let motionSmooth = 0; // for smoothing camera movement
+    function measureCameraMotion(){
+      if(!video.videoWidth) return;
+      let tCanvas = document.createElement('canvas');
+      tCanvas.width = video.videoWidth;
+      tCanvas.height = video.videoHeight;
+      let tctx = tCanvas.getContext('2d');
+      tctx.drawImage(video,0,0);
+      let frame = tctx.getImageData(0,0,tCanvas.width,tCanvas.height);
+      if(!lastFrameData){
+        lastFrameData = frame.data;
+        return;
+      }
+      let sum=0, count=0;
+      for(let i=0; i<frame.data.length; i+=4){
+        let diff = Math.abs(frame.data[i]-lastFrameData[i])
+                 + Math.abs(frame.data[i+1]-lastFrameData[i+1])
+                 + Math.abs(frame.data[i+2]-lastFrameData[i+2]);
+        sum += diff;
+        count++;
+      }
+      lastFrameData = new Uint8ClampedArray(frame.data);
+      let movement = sum/(count*3*255);
+      motionSmooth = 0.9*motionSmooth + 0.1*movement;
+    }
+
+    // We'll store a global movementLevel for the foreground script
+    window.movementLevel = 0;
+
+    // A short function to index cell arrays
+    function idx(x,y){ return y*lifeWidth + x; }
+
+    // We allow a maximum # of alive cells based on leftover resources
+    // leftover = totalActive - foregroundActive
+    // but we need to read from the foreground's formula each frame
+    // We'll store the result in global leftoverCells
+    let leftoverCells = 0;
+
+    function lifeStep(){
+      measureCameraMotion();
+
+      // compute leftover for background from the same formula
+      // used in the foreground: totalActive = ...
+      // but we don't know the "fgCount" directly, so let's reconstruct it
+      // from movementLevel + soundFactor
+      let soundFactor = (window._cachedSoundFactor||0);
+      let movementFactor = motionSmooth;
+      window.movementLevel = movementFactor; // pass to foreground
+
+      let combined = Math.max(0.001, movementFactor + soundFactor);
+      let avg = combined/2;
+      let totalActive = 50 + (1000-50)*avg; // same MIN_ACTIVE=50, MAX_PARTICLES=1000
+      let fgRatio = soundFactor/combined;
+      let fgCount = Math.floor(totalActive*fgRatio);
+      leftoverCells = Math.floor(totalActive - fgCount);
+
+      // We'll also spawn random births if motion is high
+      let births = Math.floor(motionSmooth*8); // scale
+      for(let i=0; i<births; i++){
+        let rx = Math.floor(Math.random()*lifeWidth);
+        let ry = Math.floor(Math.random()*lifeHeight);
+        cellArrayA[idx(rx,ry)] = 1;
+      }
+
+      // run standard Conway's Life rules
+      for(let y=0; y<lifeHeight; y++){
+        for(let x=0; x<lifeWidth; x++){
+          let c = cellArrayA[idx(x,y)];
+          let n=0;
+          for(let dy=-1; dy<=1; dy++){
+            for(let dx2=-1; dx2<=1; dx2++){
+              if(dx2===0 && dy===0) continue;
+              let nx=(x+dx2+lifeWidth)%lifeWidth;
+              let ny=(y+dy+lifeHeight)%lifeHeight;
+              n += cellArrayA[idx(nx,ny)];
+            }
+          }
+          if(c===1) {
+            // survive if 2 or 3 neighbors
+            cellArrayB[idx(x,y)] = (n===2 || n===3)?1:0;
+          } else {
+            // birth if exactly 3 neighbors
+            cellArrayB[idx(x,y)] = (n===3)?1:0;
+          }
+        }
+      }
+      // swap
+      let tmp=cellArrayA; cellArrayA=cellArrayB; cellArrayB=tmp;
+
+      // next we'll clamp # of alive cells if leftoverCells is small
+      let aliveIndices=[];
+      for(let i=0; i<cellArrayA.length; i++){
+        if(cellArrayA[i]===1) aliveIndices.push(i);
+      }
+      if(aliveIndices.length>leftoverCells){
+        // randomly kill extra
+        let toKill = aliveIndices.length - leftoverCells;
+        // shuffle
+        for(let i=0; i<aliveIndices.length; i++){
+          let r=Math.floor(Math.random()*(i+1));
+          let temp=aliveIndices[i];
+          aliveIndices[i]=aliveIndices[r];
+          aliveIndices[r]=temp;
+        }
+        for(let i=0; i<toKill; i++){
+          let killIdx=aliveIndices[i];
+          cellArrayA[killIdx]=0;
+        }
+      }
+    }
+
+    // We'll step life at a moderate interval to keep it calm
+    let lifeIntervalMs=750; // ~0.75s
+    setInterval(lifeStep, lifeIntervalMs);
+
+    // Each animation frame, we draw the grid
+    function drawLife(){
+      requestAnimationFrame(drawLife);
+
+      // fade out old frames so changes linger
+      ctx.fillStyle = "rgba(26,26,26,0.15)";
+      ctx.fillRect(0,0,brickCanvas.width, brickCanvas.height);
+
+      // draw each alive cell as a 24×12 brick
+      ctx.globalAlpha=0.9;
+      for(let y=0; y<lifeHeight; y++){
+        for(let x=0; x<lifeWidth; x++){
+          if(cellArrayA[idx(x,y)]===1){
+            let xx=x*BRICK_W, yy=y*BRICK_H;
+            // color at ~40–45% brightness
+            ctx.fillStyle = "hsl(30,70%,40%)";
+            ctx.fillRect(xx, yy, BRICK_W, BRICK_H);
+          }
+        }
+      }
+      ctx.globalAlpha=1;
+    }
+    drawLife();
+
+    // We'll also store the last known soundFactor so the background can read it
+    // from the "getAudioLevel(500)" function in the foreground
+    // (We'll patch the function to store it in window._cachedSoundFactor)
+    let oldGetAudioLevel = window.getAudioLevel;
+    window.getAudioLevel = function(freq){
+      let val = oldGetAudioLevel(freq);
+      window._cachedSoundFactor = val;
+      return val;
+    };
+  </script>
+</body>
+</html>

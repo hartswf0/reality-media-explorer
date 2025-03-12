@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Interactive Q-Learning Visualization</title>
+    <style>
+        body { 
+            margin: 0; 
+            font-family: 'Space Mono', monospace;
+            background-color: #121420; 
+            color: #e0e0e0;
+            overflow: hidden;
+        }
+        #ui-overlay {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(18, 20, 32, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            z-index: 100;
+        }
+        #episode-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        #neuron-info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(18, 20, 32, 0.8);
+            padding: 15px;
+            border-radius: 10px;
+            max-width: 300px;
+        }
+        canvas { 
+            width: 100%; 
+            height: 100%; 
+        }
+        button {
+            background-color: #4a4e69;
+            color: #e0e0e0;
+            border: none;
+            padding: 5px 10px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #6a6e89;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui-overlay">
+        <h3>Q-Learning Episode Viewer</h3>
+        <div id="episode-controls">
+            <button id="prev-episode">← Prev</button>
+            <button id="next-episode">Next →</button>
+            <button id="play-pause">Play</button>
+            <span id="episode-info">Episode: 0/1000</span>
+        </div>
+    </div>
+    <div id="neuron-info">
+        <h4>Learning State</h4>
+        <p id="state-details">Click a cube to explore its learning trajectory</p>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
+    <script>
+        class NeuralQLearning {
+            constructor() {
+                // Grid Configuration
+                this.gridSize = 5;
+                this.startPosition = { x: 0, y: 4 };
+                this.goalPosition = { x: 4, y: 0 };
+                this.obstacles = [
+                    { x: 2, y: 1 }, { x: 3, y: 1 },
+                    { x: 1, y: 3 }, { x: 0, y: 0 }
+                ];
+
+                // Learning Parameters
+                this.learningRate = 0.1;
+                this.discountFactor = 0.9;
+                this.maxEpisodes = 1000;
+
+                // Visualization State
+                this.episodeHistory = [];
+                this.currentEpisodeIndex = 0;
+
+                // Three.js Setup
+                this.setupThreeJS();
+                this.setupInteractions();
+
+                // Start Training
+                this.trainQLearningAgent();
+            }
+
+            setupThreeJS() {
+                // Scene Setup
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                document.body.appendChild(this.renderer.domElement);
+
+                // Camera Positioning
+                this.camera.position.set(0, 10, 10);
+                this.camera.lookAt(new THREE.Vector3(0, 0, 0));
+
+                // Grid and Cube Management
+                this.gridCubes = [];
+                this.constructGrid();
+                this.createAgent();
+
+                // Lighting
+                const ambientLight = new THREE.AmbientLight(0x404040);
+                this.scene.add(ambientLight);
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+                directionalLight.position.set(1, 1, 1);
+                this.scene.add(directionalLight);
+
+                // Animation Loop
+                this.animate();
+            }
+
+            constructGrid() {
+                // Create cubes with neuron-like layered structure
+                this.cubeFrames = {};
+
+                for (let x = 0; x < this.gridSize; x++) {
+                    for (let y = 0; y < this.gridSize; y++) {
+                        const frames = [];
+                        
+                        // Create multiple frames for each grid cell
+                        for (let z = 0; z < 10; z++) {
+                            const geometry = new THREE.BoxGeometry(0.8, 0.2, 0.8);
+                            
+                            // Color logic based on state type
+                            let color = 0x1a1a2e; // Default neutral
+                            if (x === this.startPosition.x && y === this.startPosition.y) {
+                                color = 0x00ff00; // Green for start
+                            } else if (x === this.goalPosition.x && y === this.goalPosition.y) {
+                                color = 0x0000ff; // Blue for goal
+                            } else if (this.obstacles.some(obs => obs.x === x && obs.y === y)) {
+                                color = 0xff0000; // Red for obstacles
+                            }
+
+                            const material = new THREE.MeshStandardMaterial({ 
+                                color: color,
+                                opacity: 0.5 + (z * 0.05),
+                                transparent: true
+                            });
+
+                            const cube = new THREE.Mesh(geometry, material);
+                            cube.position.set(
+                                x - (this.gridSize - 1) / 2, 
+                                z * 0.3, 
+                                y - (this.gridSize - 1) / 2
+                            );
+
+                            // Custom metadata for interaction
+                            cube.userData = {
+                                gridX: x,
+                                gridY: y,
+                                frameIndex: z
+                            };
+
+                            this.scene.add(cube);
+                            frames.push(cube);
+                        }
+
+                        // Store frames for this grid position
+                        const key = `${x},${y}`;
+                        this.cubeFrames[key] = frames;
+                    }
+                }
+            }
+
+            createAgent() {
+                const geometry = new THREE.SphereGeometry(0.3, 32, 32);
+                const material = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+                this.agent = new THREE.Mesh(geometry, material);
+                this.scene.add(this.agent);
+            }
+
+            trainQLearningAgent() {
+                // Simplified Q-learning with episode history tracking
+                const qTable = {};
+                const episodeHistory = [];
+
+                // Initialize Q-table
+                for (let x = 0; x < this.gridSize; x++) {
+                    for (let y = 0; y < this.gridSize; y++) {
+                        const state = `${x},${y}`;
+                        qTable[state] = {
+                            up: 0, down: 0, left: 0, right: 0,
+                            // Track neuron-like activation history
+                            activationHistory: []
+                        };
+                    }
+                }
+
+                // Training loop
+                for (let episode = 0; episode < this.maxEpisodes; episode++) {
+                    let currentState = `${this.startPosition.x},${this.startPosition.y}`;
+                    let episodeTraces = [];
+                    let steps = 0;
+
+                    while (steps < 100) {
+                        // Choose action (simplified for demonstration)
+                        const actions = ['up', 'down', 'left', 'right'];
+                        const action = actions[Math.floor(Math.random() * actions.length)];
+
+                        // Record state trace
+                        const [x, y] = currentState.split(',').map(Number);
+                        episodeTraces.push({
+                            state: currentState,
+                            action: action,
+                            qValues: {...qTable[currentState]},
+                            // Simulate Hebbian learning: "fire together, wire together"
+                            activation: Math.random()
+                        });
+
+                        // Update Q-table (simplified)
+                        qTable[currentState][action] += Math.random() * 0.1;
+
+                        // Move to next state (simplified)
+                        const nextStates = {
+                            up: `${x},${Math.max(0, y-1)}`,
+                            down: `${x},${Math.min(this.gridSize-1, y+1)}`,
+                            left: `${Math.max(0, x-1)},${y}`,
+                            right: `${Math.min(this.gridSize-1, x+1)},${y}`
+                        };
+                        currentState = nextStates[action];
+
+                        // Termination conditions
+                        if (currentState === `${this.goalPosition.x},${this.goalPosition.y}`) {
+                            break;
+                        }
+
+                        steps++;
+                    }
+
+                    // Store episode trace
+                    episodeHistory.push(episodeTraces);
+                }
+
+                // Store for visualization
+                this.episodeHistory = episodeHistory;
+                this.qTable = qTable;
+            }
+
+            setupInteractions() {
+                const raycaster = new THREE.Raycaster();
+                const mouse = new THREE.Vector2();
+
+                // Episode navigation
+                document.getElementById('prev-episode').addEventListener('click', () => this.navigateEpisode(-1));
+                document.getElementById('next-episode').addEventListener('click', () => this.navigateEpisode(1));
+
+                // Cube interaction
+                this.renderer.domElement.addEventListener('click', (event) => {
+                    // Calculate mouse position
+                    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+                    mouse.y = - (event.clientY / window.innerHeight) * 2 + 1;
+
+                    // Raycast
+                    raycaster.setFromCamera(mouse, this.camera);
+                    const intersects = raycaster.intersectObjects(this.scene.children);
+
+                    if (intersects.length > 0) {
+                        const cube = intersects[0].object;
+                        if (cube.userData) {
+                            this.showCubeDetails(cube.userData);
+                        }
+                    }
+                });
+            }
+
+            navigateEpisode(direction) {
+                this.currentEpisodeIndex = Math.max(0, 
+                    Math.min(this.episodeHistory.length - 1, 
+                    this.currentEpisodeIndex + direction)
+                );
+
+                // Update UI
+                document.getElementById('episode-info').textContent = 
+                    `Episode: ${this.currentEpisodeIndex}/${this.maxEpisodes}`;
+
+                // Visualize episode
+                this.visualizeEpisode(this.episodeHistory[this.currentEpisodeIndex]);
+            }
+
+            visualizeEpisode(episodeTraces) {
+                // Highlight episode path
+                episodeTraces.forEach((trace, index) => {
+                    const [x, y] = trace.state.split(',').map(Number);
+                    const frames = this.cubeFrames[trace.state];
+                    
+                    // Pulse animation with color based on activation
+                    frames.forEach((cube, frameIndex) => {
+                        gsap.to(cube.scale, {
+                            x: 1 + trace.activation,
+                            y: 1 + trace.activation,
+                            z: 1 + trace.activation,
+                            duration: 0.5,
+                            delay: index * 0.1,
+                            yoyo: true,
+                            repeat: 1
+                        });
+
+                        // Color gradient based on Q-values
+                        const qValueAvg = Object.values(trace.qValues).reduce((a,b) => a+b, 0) / 4;
+                        cube.material.color.setHSL(qValueAvg, 0.5, 0.5);
+                    });
+                });
+            }
+
+            showCubeDetails(userData) {
+                const { gridX, gridY, frameIndex } = userData;
+                const state = `${gridX},${gridY}`;
+                const stateData = this.qTable[state];
+
+                // Display neuron-like details
+                document.getElementById('state-details').innerHTML = `
+                    <strong>Grid Position:</strong> (${gridX}, ${gridY})<br>
+                    <strong>Frame:</strong> ${frameIndex}<br>
+                    <strong>Q-Values:</strong><br>
+                    ↑ Up: ${stateData.up.toFixed(2)}<br>
+                    ↓ Down: ${stateData.down.toFixed(2)}<br>
+                    ← Left: ${stateData.left.toFixed(2)}<br>
+                    → Right: ${stateData.right.toFixed(2)}
+                `;
+            }
+
+            animate() {
+                requestAnimationFrame(() => this.animate());
+
+                // Gentle scene rotation
+                this.scene.rotation.y += 0.001;
+
+                this.renderer.render(this.scene, this.camera);
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            new NeuralQLearning();
+        });
+    </script>
+</body>
+</html>

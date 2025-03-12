@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Universal Scene Template Example</title>
+    <style>
+        body { margin: 0; background: #000; }
+        canvas { display: block; }
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: #FFFFFF;
+            font-family: "Helvetica Neue", sans-serif;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            border-radius: 2px;
+            pointer-events: none;
+            letter-spacing: 2px;
+            border: 1px solid #FFFFFF;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">UNIVERSAL SCENE TEMPLATE</div>
+    <a href="index_hub.html" style="position: fixed; bottom: 20px; left: 20px; color: #FFFFFF; background: rgba(128, 128, 128, 0.5); padding: 10px 20px; border-radius: 5px; text-decoration: none; font-family: 'Helvetica Neue', sans-serif; z-index: 100;">Return to Hub</a>
+    
+    <!-- Import Three.js and other dependencies -->
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/controls/OrbitControls.js';
+        
+        // Import the Universal Scene Template
+        import { UniversalSceneTemplate } from './universal_scene_template.js';
+        
+        // Declare scene variables
+        let renderer, scene, camera, controls;
+        const objects = [];
+        
+        // Initialize the scene
+        initScene();
+        
+        /**
+         * Initialize the Three.js scene
+         */
+        function initScene() {
+            // Create renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+            
+            // Create scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x000000);
+            
+            // Create camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5, 10);
+            
+            // Create controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            
+            // Add lights
+            const ambientLight = new THREE.AmbientLight(0x404040);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+            directionalLight.position.set(1, 1, 1);
+            scene.add(directionalLight);
+            
+            // Add some objects to the scene
+            createObjects();
+            
+            // Initialize the Universal Scene Template
+            UniversalSceneTemplate.init({
+                renderer: renderer,
+                scene: scene,
+                camera: camera,
+                controls: controls,
+                animationCallback: updateObjects
+            });
+            
+            // Start the animation loop using the template's animate function
+            UniversalSceneTemplate.animate();
+        }
+        
+        /**
+         * Create objects for the scene
+         */
+        function createObjects() {
+            // Create a ground plane
+            const groundGeometry = new THREE.PlaneGeometry(20, 20);
+            const groundMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x555555,
+                side: THREE.DoubleSide
+            });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2;
+            scene.add(ground);
+            
+            // Create some cubes
+            for (let i = 0; i < 10; i++) {
+                const geometry = new THREE.BoxGeometry(1, 1, 1);
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: Math.random() * 0xffffff 
+                });
+                const cube = new THREE.Mesh(geometry, material);
+                
+                // Position randomly
+                cube.position.x = (Math.random() - 0.5) * 10;
+                cube.position.y = 0.5;
+                cube.position.z = (Math.random() - 0.5) * 10;
+                
+                // Add to scene and objects array
+                scene.add(cube);
+                objects.push(cube);
+            }
+        }
+        
+        /**
+         * Update objects in the scene
+         * This function is called by the Universal Scene Template's animate function
+         */
+        function updateObjects() {
+            const time = Date.now() * 0.001;
+            
+            // Animate all objects
+            objects.forEach((object, index) => {
+                object.rotation.x += 0.01;
+                object.rotation.y += 0.01;
+                
+                // Make objects bob up and down
+                object.position.y = 0.5 + Math.sin(time + index) * 0.5;
+            });
+        }
+    </script>
+</body>
+</html>

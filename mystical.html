@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reality Media Memory Palace - Mystical Aura</title>
+    <style>
+        body { margin: 0; background: #000; }
+        canvas { display: block; }
+        #info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            color: #FFD700;
+            font-family: "Times New Roman", serif;
+            background: rgba(107, 35, 142, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            pointer-events: none;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">MYSTICAL PRESENCE | IMMERSIVE AURA</div>
+    <a href="index_hub.html" style="position: fixed; bottom: 20px; left: 20px; color: #FFD700; background: rgba(107, 35, 142, 0.7); padding: 10px 20px; border-radius: 5px; text-decoration: none; font-family: 'Times New Roman', serif; z-index: 100;">Return to Hub</a>
+    <script type="module">
+        import * as THREE from 'https://cdn.skypack.dev/three@0.136.0';
+        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.136.0/examples/jsm/controls/OrbitControls.js';
+
+        let camera, scene, renderer, controls;
+        const particles = [];
+
+        init();
+        animate();
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.fog = new THREE.FogExp2(0x6B238E, 0.002);
+            
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 30, 50);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // Create mystical environment
+            createMysticalEnvironment();
+            createParticleSystem();
+            createLightBeams();
+
+            window.addEventListener('resize', onWindowResize, false);
+            
+            // Expose scene and renderer to parent window
+            window.scene = scene;
+            window.renderer = renderer;
+            window.animate = animate;
+            
+            console.log('Mystical realm initialized with:', {
+                scene: scene,
+                renderer: renderer,
+                camera: camera,
+                controls: controls
+            });
+        }
+
+        function createMysticalEnvironment() {
+            // Central sphere
+            const geometry = new THREE.SphereGeometry(20, 64, 64);
+            const material = new THREE.MeshPhongMaterial({
+                color: 0x6B238E,
+                transparent: true,
+                opacity: 0.6,
+                shininess: 100
+            });
+            const sphere = new THREE.Mesh(geometry, material);
+            scene.add(sphere);
+
+            // Ambient light
+            const ambientLight = new THREE.AmbientLight(0x4B0082, 0.5);
+            scene.add(ambientLight);
+
+            // Point lights
+            const lights = [];
+            for(let i = 0; i < 6; i++) {
+                const light = new THREE.PointLight(0xFFD700, 2, 50);
+                const phi = Math.acos(-1 + (2 * i) / 6);
+                const theta = Math.sqrt(6 * Math.PI) * phi;
+                light.position.setFromSphericalCoords(30, phi, theta);
+                lights.push(light);
+                scene.add(light);
+            }
+        }
+
+        function createParticleSystem() {
+            const geometry = new THREE.BufferGeometry();
+            const vertices = [];
+            
+            for(let i = 0; i < 1000; i++) {
+                const r = 50;
+                const theta = 2 * Math.PI * Math.random();
+                const phi = Math.acos(2 * Math.random() - 1);
+                const x = r * Math.sin(phi) * Math.cos(theta);
+                const y = r * Math.sin(phi) * Math.sin(theta);
+                const z = r * Math.cos(phi);
+                vertices.push(x, y, z);
+            }
+            
+            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+            
+            const material = new THREE.PointsMaterial({
+                color: 0xFFD700,
+                size: 0.2,
+                transparent: true,
+                opacity: 0.6,
+                blending: THREE.AdditiveBlending
+            });
+            
+            const particleSystem = new THREE.Points(geometry, material);
+            particles.push(particleSystem);
+            scene.add(particleSystem);
+        }
+
+        function createLightBeams() {
+            const beamGeometry = new THREE.CylinderGeometry(0.2, 0.2, 100, 32);
+            const beamMaterial = new THREE.MeshPhongMaterial({
+                color: 0xFFD700,
+                transparent: true,
+                opacity: 0.3,
+                blending: THREE.AdditiveBlending
+            });
+
+            for(let i = 0; i < 8; i++) {
+                const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+                const angle = (i / 8) * Math.PI * 2;
+                beam.position.set(
+                    Math.cos(angle) * 30,
+                    0,
+                    Math.sin(angle) * 30
+                );
+                beam.rotation.x = Math.PI / 2;
+                scene.add(beam);
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            // Animate particles
+            particles.forEach(particle => {
+                particle.rotation.y += 0.001;
+                particle.rotation.z += 0.0005;
+            });
+
+            // Pulse effect on lights
+            const time = Date.now() * 0.001;
+            scene.children.forEach(child => {
+                if(child instanceof THREE.PointLight) {
+                    child.intensity = 2 + Math.sin(time + child.position.x) * 0.5;
+                }
+            });
+
+            renderer.render(scene, camera);
+        }
+        
+        // Expose renderer, scene, and camera to parent window for video capture
+        window._captureData = {
+            renderer: renderer,
+            scene: scene,
+            camera: camera
+        };
+        
+        // Also expose directly on window for easier access by video capture system
+        window.renderer = renderer;
+        window.scene = scene;
+        window.camera = camera;
+        
+        // Signal to parent that the scene is ready
+        if (window.parent && window.parent !== window) {
+            window.parent.postMessage({ type: 'SCENE_READY' }, '*');
+        }
+    </script>
+</body>
+</html>
